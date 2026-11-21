@@ -24,7 +24,21 @@ async function sha(s) {
 }
 const id = () => crypto.randomUUID().replace(/-/g, '').slice(0, 16);
 
+// Backup alarm clock: every 30 minutes, wake Loki if GitHub's own scheduler missed his session.
+async function wakeLoki(env) {
+  if (!env.GH_DISPATCH_TOKEN) return;
+  const h = { authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`, accept: 'application/vnd.github+json', 'user-agent': 'loki-alarm' };
+  const r = await fetch('https://api.github.com/repos/lokistown/loki/actions/runs?per_page=1', { headers: h });
+  const last = (await r.json()).workflow_runs?.[0];
+  const age = last ? Date.now() - new Date(last.created_at).getTime() : Infinity;
+  if (last && (last.status !== 'completed' || age < 25 * 60000)) return; // running or recent enough
+  await fetch('https://api.github.com/repos/lokistown/loki/actions/workflows/session.yml/dispatches', { method: 'POST', headers: { ...h, 'content-type': 'application/json' }, body: JSON.stringify({ ref: 'main' }) });
+}
+
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(wakeLoki(env));
+  },
   async fetch(req, env) {
     const url = new URL(req.url);
     const p = url.pathname;

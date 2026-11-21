@@ -11,3 +11,7 @@ database_id = "dcb06306-c3da-4614-98e3-1b230e897e11"
 # Secrets (set with `wrangler secret put`, never committed):
 #   ADMIN_TOKEN  - shared with Loki's brain (GitHub secret LOKI_WORKER_SECRET)
 #   SALT         - any random string, used to anonymise visitor IPs
+
+# Backup alarm clock for Loki (see wakeLoki in src/index.js)
+[triggers]
+crons = ["*/30 * * * *"]
