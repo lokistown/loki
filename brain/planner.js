@@ -64,9 +64,10 @@ Recent: ${(state.recent || []).slice(0, 5).map((x) => x.text).join('; ') || 'not
 Places you can be (index: activity @ place):
 ${list}
 
-Also write one short line about something happening in town right now ("what's on"), and what Pip (your little mouse friend) is up to.
+Also write one short line about something happening in town right now ("what's on"), what Pip (your little mouse friend) is up to,
+8 short varied thoughts you might have over these hours, and up to 3 things you are planning to add or make soon (visitors see these).
 Reply as JSON: {"blocks": [{"place": <index>, "minutes": <10-25>, "label": "what you're doing, 3-8 words, lowercase, e.g. 'painting a sunset fish'", "thought": "short inner thought"}],
-"whatsOn": "one line", "pip": "what Pip is doing, one short line"}`,
+"whatsOn": "one line", "pip": "what Pip is doing, one short line", "thoughts": ["..."], "ideas": ["..."]}`,
     { json: true },
   );
   const blocks = Array.isArray(r.blocks) ? r.blocks : [];
@@ -86,6 +87,8 @@ Reply as JSON: {"blocks": [{"place": <index>, "minutes": <10-25>, "label": "what
   state.schedule = schedule;
   state.whatsOn = clip(r.whatsOn || '', 140);
   state.pip.status = clip(r.pip || state.pip.status, 100);
+  state.thoughts = (Array.isArray(r.thoughts) ? r.thoughts : []).slice(0, 10).map((x) => clip(x, 120));
+  state.ideas = (Array.isArray(r.ideas) ? r.ideas : []).slice(0, 3).map((x) => clip(x, 100));
   state.pip.needs.fullness = clamp(state.pip.needs.fullness + 40);
   return schedule.length;
 }

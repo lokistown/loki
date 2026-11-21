@@ -5,6 +5,10 @@ import { config } from './config.js';
 import { slugify, clip, safeColor, cleanPixelSvg } from './util.js';
 import { ADDABLE_ROOMS } from './config.js';
 import { makeZip } from './zip.js';
+import { findSpot } from './towngeo.js';
+import { notifyOwner } from './gifts.js';
+
+export const PROP_TYPES = ['statue_cat', 'statue_fish', 'sculpture', 'birdbath', 'bench', 'lamp', 'flowerbed', 'rock_garden', 'signpost', 'kite', 'tree', 'planter'];
 
 export const ACTIONS = {
   write_diary: 'Write a diary entry about your day, a feeling, a visitor or an idea.',
@@ -13,6 +17,8 @@ export const ACTIONS = {
   learn_skill: 'Learn a new skill and write yourself a short how-to guide for it.',
   make_music: 'Compose a short song in your music room (you are learning to sing and play piano).',
   make_product: 'Prepare something to SELL in your shop (an art pack from your gallery, or a small website template). Your human lists it for sale.',
+  decorate: 'Add something new to your town that is not a building: a statue, a mural of your art on a wall, plants, benches, lamps, or anything you design yourself.',
+  business_idea: 'Think of a way to earn money from your creations (new shop, new product line, YouTube, commissions...) and what you need for it.',
   make_wish: 'Ask your human for something real they could give you (a tool, an API key, a promotion, uploading a product, a new feature). Max 3 open wishes.',
   rest: 'Have a short nap, stretch, or just look around (use rarely).',
 };
@@ -212,6 +218,79 @@ Reply as JSON: {"type": "art_pack|template", "title": "product title", "descript
     return { title, summary: `prepared "${title}" for the shop`, xp: 15, location: 'workshop' };
   },
 
+  async decorate({ brain, mem, system, town, now, state }, choice) {
+    const gallery = mem.list('gallery.json');
+    const props = (town.props ||= []);
+    const anchors = ['plaza', ...town.buildings.map((b) => b.id)];
+    const r = await brain.ask(
+      system,
+      `[[DECORATE]] You decided: "${choice.plan}". Add ONE new thing to your town that is not a building.
+Ideas from visitors that inspired you: ${(state.inspirations || []).join('; ') || 'none yet'}.
+Things already added: ${props.slice(-12).map((p) => p.name || p.type).join(', ') || 'nothing yet'}.
+Choose a "type":
+- ready-made: ${PROP_TYPES.filter((t) => t !== 'custom').join(', ')}
+- "mural": paint one of your pictures big on the side of a building (pick "art" index from: ${gallery.slice(0, 12).map((g, i) => `${i}: ${g.title}`).join('; ') || 'no pictures yet, so do not choose mural'})
+- "custom": design your own object from simple shapes (box, sphere, cylinder, cone, torus, capsule), 4-40 parts,
+  each {"shape", "size": [x,y,z] metres, "pos": [x,y,z] metres (y up, ground is 0), "rot": [x,y,z] degrees, "color": "#rrggbb"}.
+  Make it look like a real thing (a lighthouse, a giant teacup, a fish sculpture, a gazebo, a kite stand...). Max size about 6 m.
+Place it near one of: ${anchors.join(', ')}.
+Reply as JSON: {"type": "...", "name": "short name", "description": "one sentence", "color": "#rrggbb", "anchor": "plaza or a building id",
+"side": "left|right (murals only)", "art": 0, "scale": 1, "parts": [], "diary": "one or two sentences in your voice"}`,
+      { json: true },
+    );
+    const type = r.type === 'mural' || r.type === 'custom' || PROP_TYPES.includes(r.type) ? r.type : 'flowerbed';
+    const id = `p${Date.now().toString(36)}`;
+    const name = clip(r.name || type.replace('_', ' '), 40);
+    let prop;
+    if (type === 'mural') {
+      const art = gallery[Math.max(0, Math.min(gallery.length - 1, Number(r.art) || 0))];
+      const host = town.buildings.find((b) => b.id === r.anchor && Array.isArray(b.rooms)) || town.buildings.find((b) => Array.isArray(b.rooms));
+      if (!art || !host) throw new Error('No picture or wall for a mural yet');
+      prop = { id, type, name, building: host.id, side: r.side === 'left' ? 'left' : 'right', file: art.file, built: now.date };
+    } else {
+      const parts = type === 'custom' ? (Array.isArray(r.parts) ? r.parts : []).slice(0, 40) : undefined;
+      if (type === 'custom' && parts.length < 3) throw new Error('Design came out too simple');
+      let radius = 1.2;
+      if (parts) for (const p of parts) radius = Math.max(radius, Math.hypot(Number(p.pos?.[0]) || 0, Number(p.pos?.[2]) || 0) + Math.max(Number(p.size?.[0]) || 0.5, Number(p.size?.[2]) || 0.5) / 2);
+      const scale = Math.max(0.5, Math.min(2.5, Number(r.scale) || 1));
+      radius = Math.min(5, radius * scale);
+      const spot = findSpot(town, anchors.includes(r.anchor) ? r.anchor : 'plaza', radius, id);
+      if (!spot) throw new Error('No free space found');
+      prop = { id, type, name, description: clip(r.description || '', 160), color: safeColor(r.color, '#f28c28'), x: spot.x, z: spot.z, rot: Math.round(Math.random() * 360), scale, radius, built: now.date, ...(parts ? { design: { parts } } : {}) };
+    }
+    props.push(prop);
+    mem.saveTown(town);
+    mem.addDiary(now.date, now.time, `New in town: ${name}`, r.diary || r.description || `I added ${name} to my town.`);
+    return { title: name, summary: `added ${type === 'mural' ? 'a mural' : `a ${type.replace('_', ' ')}`} to town: "${name}"`, xp: 9 };
+  },
+
+  async business_idea({ brain, mem, system, now }, choice) {
+    const ideas = mem.list('business.json');
+    const r = await brain.ask(
+      system,
+      `[[BUSINESS]] You decided: "${choice.plan}". You want to earn real money one day from what you make (art, music, templates, games, videos...).
+Ideas you already had: ${ideas.slice(0, 8).map((i) => i.title).join('; ') || 'none'}.
+Your shops: Ko-fi (lokistown) and Gumroad (lokistown). Think of ONE concrete, honest, realistic next business idea or growth step.
+If it needs something only your human can set up (an Etsy or YouTube account, a social media page, a domain...), say exactly what.
+Reply as JSON: {"title": "short name", "pitch": "2 sentences", "steps": ["step", "..."], "needs": "what you need from your human, or empty", "diary": "one sentence"}`,
+      { json: true },
+    );
+    const idea = { id: `b${Date.now().toString(36)}`, title: clip(r.title, 60), pitch: clip(r.pitch || '', 300), steps: (Array.isArray(r.steps) ? r.steps : []).slice(0, 8).map((s) => clip(s, 140)), needs: clip(r.needs || '', 200), status: 'idea', created: now.date };
+    ideas.unshift(idea);
+    mem.saveList('business.json', ideas, 100);
+    if (idea.needs) {
+      const wishes = mem.list('wishes.json');
+      if (wishes.filter((w) => w.status === 'open').length < 3) {
+        const wish = { id: `w${Date.now().toString(36)}`, text: idea.needs, why: `For my business idea: ${idea.title}`, kind: 'account', status: 'open', created: now.date };
+        wishes.unshift(wish);
+        mem.saveList('wishes.json', wishes, 200);
+        await notifyOwner(`🌠 Loki wishes: ${clip(wish.text, 70)}`, `${wish.text}\n\nWhy: ${wish.why}\n\nwish:${wish.id}\n\nReply here (or use the Control Centre) — Loki reads replies at his next work session.`);
+      }
+    }
+    mem.addDiary(now.date, now.time, `Business idea: ${idea.title}`, r.diary || idea.pitch);
+    return { title: idea.title, summary: `came up with a business idea: ${idea.title}`, xp: 6, location: 'control' };
+  },
+
   async make_wish({ brain, mem, system, now }, choice) {
     const wishes = mem.list('wishes.json');
     const open = wishes.filter((w) => w.status === 'open');
@@ -228,6 +307,7 @@ Reply as JSON: {"text": "the wish, one sentence, addressed to your human", "why"
     wishes.unshift(wish);
     mem.saveList('wishes.json', wishes, 200);
     mem.addDiary(now.date, now.time, 'A wish', `${wish.text} ${wish.why}`);
+    await notifyOwner(`🌠 Loki wishes: ${clip(wish.text, 70)}`, `${wish.text}\n\nWhy: ${wish.why}\n\nwish:${wish.id}\n\nReply here (or use the Control Centre) — Loki reads replies at his next work session.`);
     return { title: wish.text, summary: `made a wish: ${wish.text}`, xp: 3, location: 'control' };
   },
 

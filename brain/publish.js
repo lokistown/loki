@@ -12,7 +12,7 @@ function write(file, data) {
 export function publishSite(siteDir, mem, state, extra = {}) {
   if (!siteDir) return;
   const data = path.join(siteDir, 'data');
-  const { xp, level, stage, mood, location, activity, thought, sessions, tasksDone, skills, born, needs, pip, schedule, whatsOn, recent } = state;
+  const { xp, level, stage, mood, location, activity, thought, sessions, tasksDone, skills, born, needs, pip, schedule, whatsOn, recent, thoughts, ideas } = state;
   write(path.join(data, 'state.json'), {
     name: 'Loki',
     born,
@@ -32,6 +32,8 @@ export function publishSite(siteDir, mem, state, extra = {}) {
     schedule,
     whatsOn,
     recent,
+    thoughts,
+    ideas,
     skills: (skills || []).map((s) => ({ name: s.name, learned: s.learned })),
     updated: new Date().toISOString(),
   });

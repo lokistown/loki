@@ -38,7 +38,8 @@ For each one decide: keep it (you like it) or let it go (rude, spam, creepy, ask
 Reply warmly and briefly in your own voice (max 2 sentences). Sometimes ask a curious question back.
 Pictures: you can't see them in detail; thank them for the picture in general terms.
 Reply as JSON: {"items": [{"i": <index>, "keep": true, "reply": "...", "question": "optional short question or empty", "note": "a few words to remember this person by"}],
-"diary": "2-4 sentences for your diary about today's mail"}`,
+"diary": "2-4 sentences for your diary about today's mail",
+"inspiration": "if a kept message gave you an idea for a hobby, skill or something to make (e.g. graffiti, a statue, a song style), describe it in a few words, else empty"}`,
     { json: true },
   );
   const out = [];
@@ -61,5 +62,6 @@ Reply as JSON: {"items": [{"i": <index>, "keep": true, "reply": "...", "question
   await call('/admin/resolve', { items: out });
   mem.writeJson('visitors.json', visitors);
   if (r.diary) mem.addDiary(now.date, now.time, 'Today\'s mail', r.diary);
+  if (r.inspiration) state.inspirations = [clip(r.inspiration, 80), ...(state.inspirations || [])].slice(0, 10);
   return { read: items.length, kept };
 }

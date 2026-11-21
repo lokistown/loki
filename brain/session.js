@@ -61,7 +61,8 @@ ${diary}
 What do you do next? Options:
 ${Object.entries(ACTIONS).map(([k, v]) => `- ${k}: ${v}`).join('\n')}
 
-Balance creating, building your town, earning (products), learning and looking after yourself. Avoid repeating the same action many times in a row.
+Ideas visitors inspired: ${(state.inspirations || []).join('; ') || 'none yet'}. Your plans: ${(state.ideas || []).join('; ') || 'none'}.
+Balance creating, decorating and building your town, earning (products, business), learning and looking after yourself. Avoid repeating the same action many times in a row.
 Reply as JSON: {"thought": "one short inner thought, first person", "mood": "one word", "action": "<one option>", "plan": "what exactly you will do, one sentence"}`,
     { json: true },
   );
@@ -94,6 +95,13 @@ Reply as JSON: {"reply": "...", "diary": "...", "granted": ${wish ? 'true if thi
     }
     await answerGift(g.number, clip(r.reply || 'Thank you!', 500));
     log.unshift({ date: now.date, title: g.title, wish: wish?.text || null, reply: clip(r.reply, 500) });
+    // money your human reports ("Sale: $5 for the art pack") goes into Loki's wallet
+    const money = `${g.title} ${g.body}`.match(/(sale|sold|income|earned|tip)[^$€£\d]{0,40}[$€£]\s?(\d+(?:\.\d{1,2})?)/i);
+    if (money) {
+      const ledger = mem.list('ledger.json');
+      ledger.unshift({ date: now.date, amount: Number(money[2]), currency: `${g.title} ${g.body}`.includes('€') ? 'EUR' : `${g.title} ${g.body}`.includes('£') ? 'GBP' : 'USD', note: clip(g.title, 100) });
+      mem.saveList('ledger.json', ledger, 1000);
+    }
     mem.addDiary(now.date, now.time, `A gift: ${clip(g.title, 40)}`, r.diary || r.reply || 'My human gave me something.');
     mem.addRecent(state, now.time, `opened a gift: ${clip(g.title, 50)}`);
     state.needs.joy = Math.min(100, state.needs.joy + 15);

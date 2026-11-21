@@ -51,6 +51,7 @@ jobs:
           LOKI_ADMIN_PASSWORD: ${{ secrets.LOKI_ADMIN_PASSWORD }}
           LOKI_WORKER_URL: ${{ vars.LOKI_WORKER_URL }}
           LOKI_WORKER_SECRET: ${{ secrets.LOKI_WORKER_SECRET }}
+          LOKI_NTFY_TOPIC: ${{ secrets.LOKI_NTFY_TOPIC }}
         run: node loki/brain/session.js --memory loki-memory --site site
 
       # Runs even if the session crashed half-way, so every finished task is saved.
