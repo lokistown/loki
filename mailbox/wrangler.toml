@@ -6,7 +6,7 @@ compatibility_date = "2025-06-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "loki-mailbox"
-database_id = "REPLACE_WITH_DATABASE_ID"
+database_id = "dcb06306-c3da-4614-98e3-1b230e897e11"
 
 # Secrets (set with `wrangler secret put`, never committed):
 #   ADMIN_TOKEN  - shared with Loki's brain (GitHub secret LOKI_WORKER_SECRET)
