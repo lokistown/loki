@@ -7,9 +7,10 @@ export const config = {
   sleepEndHour: Number(env.LOKI_SLEEP_END ?? 7), //      07:00 UK
 
   // Per work session limits (keeps us inside free AI quotas).
-  maxCallsPerSession: Number(env.LOKI_MAX_CALLS ?? 14),
+  maxCallsPerSession: Number(env.LOKI_MAX_CALLS ?? 12),
+  dailyCallBudget: Number(env.LOKI_DAILY_CALLS ?? 420), // stays under Gemini free limits (lite ~500/day per model)
   maxMinutesPerSession: Number(env.LOKI_MAX_MINUTES ?? 35),
-  maxTasksPerSession: Number(env.LOKI_MAX_TASKS ?? 6),
+  maxTasksPerSession: Number(env.LOKI_MAX_TASKS ?? 4),
 
   // AI providers, tried in this order. Missing keys are skipped.
   providers: [

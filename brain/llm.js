@@ -44,14 +44,18 @@ async function geminiModels(key, preferred) {
   names.sort((a, b) => score(b) - score(a));
   const list = [...new Set([preferred, ...names].filter(Boolean))];
   if (!list.length) throw new Error('No Gemini flash model available');
-  resolvedModels.geminiList = list.slice(0, 6);
+  resolvedModels.geminiList = list.slice(0, 8);
   console.log(`Gemini models to try: ${resolvedModels.geminiList.join(', ')}`);
   return resolvedModels.geminiList;
 }
 const geminiBad = new Set(); // models that failed this session
 
-async function callGemini(key, model, system, user, json) {
-  const models = (await geminiModels(key, model)).filter((m) => !geminiBad.has(m));
+// Free tier: full "flash" models allow only ~20 requests/day, "flash-lite" ~500/day.
+// Everyday thinking uses lite first; big creative jobs (games) try full flash first.
+async function callGemini(key, model, system, user, json, quality = 'normal') {
+  const all = (await geminiModels(key, model)).filter((m) => !geminiBad.has(m));
+  const lite = all.filter((m) => /lite/.test(m)), full = all.filter((m) => !/lite/.test(m));
+  const models = model ? all : quality === 'high' ? [...full, ...lite] : [...lite, ...full];
   const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [{ text: user }] }],
@@ -128,7 +132,7 @@ export class Brain {
     return this.maxCalls - this.calls;
   }
 
-  async ask(system, user, { json = false } = {}) {
+  async ask(system, user, { json = false, quality = 'normal' } = {}) {
     if (this.calls >= this.maxCalls) throw new Error('Session AI budget used up');
     this.calls++;
     if (this.mock) {
@@ -143,7 +147,7 @@ export class Brain {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           let r;
-          if (p.name === 'gemini') r = await callGemini(key, p.model, system, user, json);
+          if (p.name === 'gemini') r = await callGemini(key, p.model, system, user, json, quality);
           else if (p.name === 'groq') r = await callOpenAICompat('https://api.groq.com/openai/v1', key, p.model, system, user, json);
           else r = await callOpenAICompat('https://openrouter.ai/api/v1', key, await openrouterModel(key, p.model), system, user, json);
           this.log.push({ provider: p.name, model: r.model });

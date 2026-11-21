@@ -119,7 +119,11 @@ async function main() {
   state.counters ||= {};
   const town = mem.loadTown();
   mem.saveTown(town);
-  const brain = new Brain({ mock });
+  // daily AI budget (Gemini quotas reset at midnight Pacific time)
+  const aiDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+  if (!state.ai || state.ai.day !== aiDay) state.ai = { day: aiDay, calls: 0 };
+  const left = config.dailyCallBudget - state.ai.calls;
+  const brain = new Brain({ mock, maxCalls: Math.max(0, Math.min(config.maxCallsPerSession, left)) });
   const now = ukNow();
   const hoursSince = state.updated ? (Date.now() - new Date(state.updated)) / 3600000 : 0;
   driftNeeds(state, hoursSince);
@@ -248,6 +252,7 @@ async function main() {
     mem.event('plan_failed', { summary: clip(e.message, 200) });
   }
 
+  state.ai.calls += brain.calls;
   mem.saveState(state);
   mem.event('session_end', { session: state.sessions, tasks, calls: brain.calls, providers: [...new Set(brain.log.map((l) => `${l.provider}:${l.model}`))] });
   publish({});

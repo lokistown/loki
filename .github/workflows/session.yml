@@ -2,8 +2,8 @@ name: Loki work session
 
 on:
   schedule:
-    # Every 2 hours (UTC). Loki checks UK time himself and sleeps 23:00-07:00.
-    - cron: '17 */2 * * *'
+    # Every 30 minutes. Loki checks UK time himself and sleeps 23:00-07:00 (night runs are tiny).
+    - cron: '7,37 * * * *'
   workflow_dispatch: {}
 
 # Never run two sessions at once (protects memory).
@@ -17,7 +17,7 @@ permissions:
 jobs:
   session:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 25
     steps:
       - name: Checkout brain
         uses: actions/checkout@v5
