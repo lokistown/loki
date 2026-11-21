@@ -14,7 +14,8 @@ import { publishSite } from './publish.js';
 import { writeControl } from './control.js';
 import { planSchedule, mapText, driftNeeds, applyNeeds } from './planner.js';
 import { fetchGifts, answerGift, ensureGiftLabel } from './gifts.js';
-import { readMailbox, mailboxReady } from './offerings.js';
+import { readMailbox, mailboxReady, syncSales } from './offerings.js';
+import { notifyOwner } from './gifts.js';
 import { ukNow, isSleepHour, nightKey, timeOfDay, clip } from './util.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -195,6 +196,23 @@ async function main() {
       console.warn('Mailbox failed:', e.message);
       mem.event('mail_error', { summary: clip(e.message, 200) });
     }
+  }
+  // 2b) money: sales and tips from Ko-fi / Gumroad
+  try {
+    for (const sale of await syncSales(ctx)) {
+      const money = `${sale.currency === 'USD' ? '$' : sale.currency === 'GBP' ? '£' : sale.currency === 'EUR' ? '€' : sale.currency + ' '}${sale.amount.toFixed(2)}`;
+      mem.event('sale', { summary: `${money} — ${sale.note}` });
+      if (sale.test) continue;
+      mem.addDiary(now.date, ukNow().time, `💰 I earned ${money}!`, `${sale.note}.${sale.message ? ` They wrote: "${sale.message}"` : ''} This goes straight into my town fund.`);
+      mem.addRecent(state, ukNow().time, `earned ${money} (${sale.source})`);
+      state.needs.joy = Math.min(100, state.needs.joy + 20);
+      mem.addXp(state, 15, 'sale');
+      await notifyOwner(`💰 Loki earned ${money}`, `${sale.note}
+
+It's in his wallet in the Control Centre.`);
+    }
+  } catch (e) {
+    console.warn('Sales sync failed:', e.message);
   }
   mem.saveState(state);
 

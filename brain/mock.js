@@ -10,7 +10,7 @@ function mockArt() {
 export function mockReply(user) {
   const J = JSON.stringify;
   if (user.includes('[[DECIDE]]')) {
-    const action = pick(['write_diary', 'improve_town', 'make_art', 'make_art', 'learn_skill', 'make_music', 'make_product', 'make_wish', 'decorate', 'decorate', 'business_idea']);
+    const action = pick(['write_diary', 'improve_town', 'make_art', 'make_art', 'learn_skill', 'make_music', 'make_product', 'make_wish', 'decorate', 'decorate', 'business_idea', 'make_game']);
     return J({ thought: pick(['The bakery needs a chimney.', 'I wonder who will visit today.', 'My paws want to paint.']), mood: pick(['curious', 'cozy', 'busy', 'proud']), action, plan: `(mock) ${action}` });
   }
   if (user.includes('[[TOWN]]')) return J(pick([{ target: 'house', add_room: 'library', room_name: 'Reading Nook', diary: 'I added a reading nook.' }, { target: 'new', name: 'Sunny Park', kind: 'park', color: '#8fd16a', description: 'A park with a bench.', diary: 'I made a park.' }, { target: 'bakery', name: 'Bakery', description: 'Now with a bigger oven.', diary: 'Upgraded the bakery.' }]));
@@ -28,6 +28,8 @@ export function mockReply(user) {
   }
   if (user.includes('[[DECORATE]]')) return J(pick([{ type: 'statue_cat', name: 'Golden Cat', color: '#e9c46a', anchor: 'plaza', description: 'A shiny cat statue.', diary: 'I made a statue of myself.' }, { type: 'custom', name: 'Giant Teacup', color: '#f8f9fa', anchor: 'bakery', parts: [{ shape: 'cylinder', size: [2, 1.2, 2], pos: [0, 0.6, 0], color: '#f8f9fa' }, { shape: 'torus', size: [1, 1, 1], pos: [1.2, 0.8, 0], rot: [0, 90, 0], color: '#f8f9fa' }, { shape: 'cylinder', size: [2.6, 0.1, 2.6], pos: [0, 0.05, 0], color: '#e07a1f' }], diary: 'Pip needed a giant teacup.' }, { type: 'flowerbed', name: 'Sunny Flowers', color: '#ffd166', anchor: 'house', diary: 'Flowers!' }]));
   if (user.includes('[[BUSINESS]]')) return J({ title: 'Cat sticker packs', pitch: 'Printable sticker sheets of my art.', steps: ['Make 10 stickers', 'Sell on Gumroad'], needs: 'An Etsy shop would help me reach more buyers.', diary: 'I want to sell stickers.' });
+  if (user.includes('[[GAME]]')) return J({ title: 'Pip Hop', description: 'Help Pip hop over teacups.', howto: 'Space or tap to jump', html: '<!doctype html><html><head><meta charset="utf-8"><title>Pip Hop</title></head><body style="margin:0;background:#fff8ec"><canvas id="c" width="480" height="270"></canvas><script>const c=document.getElementById("c"),x=c.getContext("2d");let y=200,v=0,s=0;function jump(){if(y>=200)v=-9}addEventListener("keydown",jump);addEventListener("pointerdown",jump);function f(){v+=0.5;y=Math.min(200,y+v);s++;x.fillStyle="#fff8ec";x.fillRect(0,0,480,270);x.fillStyle="#999";x.fillRect(60,y,20,20);x.fillStyle="#3b2416";x.fillText("Score "+s,10,20);requestAnimationFrame(f)}f();</script></body></html>', diary: 'I made a tiny game.' });
+  if (user.includes('[[REVIEW]]')) return J({ ok: true, problems: [], html: '' });
   if (user.includes('[[DREAM]]')) return J({ title: 'The moon fish', text: 'I dreamt the moon was a fish and I almost caught it.' });
   return J({ title: 'A mock day', text: 'Today was a pretend day. Everything worked.' });
 }

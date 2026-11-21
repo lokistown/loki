@@ -6,6 +6,8 @@ import { slugify, clip, safeColor, cleanPixelSvg } from './util.js';
 import { ADDABLE_ROOMS } from './config.js';
 import { makeZip } from './zip.js';
 import { findSpot } from './towngeo.js';
+import { reviewAndFix, scriptErrors } from './quality.js';
+import { publishRepo } from './github.js';
 import { notifyOwner } from './gifts.js';
 
 export const PROP_TYPES = ['statue_cat', 'statue_fish', 'sculpture', 'birdbath', 'bench', 'lamp', 'flowerbed', 'rock_garden', 'signpost', 'kite', 'tree', 'planter'];
@@ -19,11 +21,12 @@ export const ACTIONS = {
   make_product: 'Prepare something to SELL in your shop (an art pack from your gallery, or a small website template). Your human lists it for sale.',
   decorate: 'Add something new to your town that is not a building: a statue, a mural of your art on a wall, plants, benches, lamps, or anything you design yourself.',
   business_idea: 'Think of a way to earn money from your creations (new shop, new product line, YouTube, commissions...) and what you need for it.',
+  make_game: 'Design and code a small, fun, original browser game (it gets its own GitHub repo and appears in your arcade). Takes effort; do it when you feel creative.',
   make_wish: 'Ask your human for something real they could give you (a tool, an API key, a promotion, uploading a product, a new feature). Max 3 open wishes.',
   rest: 'Have a short nap, stretch, or just look around (use rarely).',
 };
 
-const BUILDING_KINDS = ['house', 'workshop', 'bakery', 'gallery', 'market', 'cafe', 'shop', 'library', 'tower', 'park', 'garden', 'fountain', 'tree', 'other'];
+const BUILDING_KINDS = ['house', 'workshop', 'bakery', 'gallery', 'market', 'cafe', 'shop', 'library', 'tower', 'arcade', 'park', 'garden', 'fountain', 'tree', 'other'];
 
 export async function runAction(ctx, choice) {
   const fn = handlers[choice.action] || handlers.rest;
@@ -55,7 +58,7 @@ Either upgrade one existing building (give its id), add a new ROOM to a building
 Building kinds: ${BUILDING_KINDS.join(', ')}. Your town is a 3D town that visitors walk around, so think about what would make it a lovely place to explore (shops, parks, cafes, places to show your art and sell your things).
 Levels go 1-5: each level makes a building bigger and fancier.
 Reply as JSON: {"target": "<id or new>", "name": "name", "kind": "<kind>", "color": "#rrggbb main colour",
-"description": "how it looks now (max 25 words)", "add_room": "optional room kind", "room_name": "optional fun room name", "diary": "one or two sentences about doing it, in your voice"}`,
+"description": "how it looks now (max 25 words)", "brand": {"name": "a real-sounding business name (shops, cafes, etc. — not for homes/parks)", "tagline": "2-4 words", "style": "badge|banner|neon|script|serif|plate", "color": "#rrggbb", "accent": "#rrggbb", "icon": "croissant|hammer|frame|fish|cup|book|bag|joystick|star|paw"}, "add_room": "optional room kind", "room_name": "optional fun room name", "diary": "one or two sentences about doing it, in your voice"}`,
       { json: true },
     );
     let b = town.buildings.find((x) => x.id === r.target);
@@ -80,10 +83,11 @@ Reply as JSON: {"target": "<id or new>", "name": "name", "kind": "<kind>", "colo
       summary = `upgraded ${b.name} to level ${b.level}`;
     }
     b.color = safeColor(r.color, b.color || '#c98b5a');
+    if (r.brand && r.brand.name && !['house', 'park', 'garden', 'tree', 'fountain'].includes(b.kind)) b.brand = { name: clip(r.brand.name, 32), tagline: clip(r.brand.tagline || '', 30), style: ['badge', 'banner', 'neon', 'script', 'serif', 'plate'].includes(r.brand.style) ? r.brand.style : 'badge', color: safeColor(r.brand.color, '#5b3a29'), accent: safeColor(r.brand.accent, '#ffd166'), icon: r.brand.icon || 'paw' };
     b.description = clip(r.description || b.description, 160);
     b.updated = now.date;
     mem.saveTown(town);
-    mem.addDiary(now.date, now.time, `Town: ${summary}`, r.diary || summary);
+    mem.addDiary(now.date, now.time, `Town: ${summary}`, r.diary || summary, { type: 'building', id: b.id });
     return { title: summary, summary, xp: 10, location: b.id };
   },
 
@@ -109,7 +113,7 @@ Reply as JSON: {"title": "title", "description": "one sentence", "svg": "<svg ..
     const gallery = mem.readJson('gallery.json', []);
     gallery.unshift({ file, title, description: clip(r.description, 200), date: now.date, forSale: false });
     mem.writeJson('gallery.json', gallery.slice(0, config.maxGalleryItems));
-    mem.addDiary(now.date, now.time, `New art: ${title}`, r.description || title);
+    mem.addDiary(now.date, now.time, `New art: ${title}`, r.description || title, { type: 'url', url: `gallery/${file}` });
     return { title, summary: `made a pixel-art picture "${title}"`, xp: 12, location: 'gallery' };
   },
 
@@ -157,11 +161,12 @@ Reply as JSON: {"title": "song title", "mood": "one or two words", "bpm": 70-150
     const title = clip(r.title || 'Untitled tune', 60);
     songs.unshift({ title, mood: clip(r.mood || '', 30), bpm: Math.max(60, Math.min(160, Number(r.bpm) || 100)), wave: ['triangle', 'sine', 'square'].includes(r.wave) ? r.wave : 'triangle', notes, bass: clean(r.bass, 28, 60, 32), date: now.date });
     mem.saveList('music.json', songs, 200);
-    mem.addDiary(now.date, now.time, `New song: ${title}`, r.diary || `I wrote a song called ${title}.`);
+    mem.addDiary(now.date, now.time, `New song: ${title}`, r.diary || `I wrote a song called ${title}.`, { type: 'music' });
     return { title, summary: `wrote a song called "${title}"`, xp: 12, location: 'house' };
   },
 
-  async make_product({ brain, mem, system, now }, choice) {
+  async make_product(ctx, choice) {
+    const { brain, mem, system, now } = ctx;
     const gallery = mem.list('gallery.json');
     const products = mem.list('products.json');
     const used = new Set(products.flatMap((p) => p.items || []));
@@ -192,9 +197,16 @@ Reply as JSON: {"type": "art_pack|template", "title": "product title", "descript
       }
       items = picks.map((g) => g.file);
     } else {
-      const html = String(r.html || '');
-      if (html.length < 400 || /<script[^>]+src=|<iframe|javascript:/i.test(html)) throw new Error('Template came out unusable');
-      files.push({ name: 'index.html', data: html.slice(0, 60000) });
+      let html = String(r.html || '');
+      if (html.length < 400) throw new Error('Template came out unusable');
+      const checked = await reviewAndFix(ctx, html, 'website template for sale');
+      if (!checked.ok) throw new Error(`Template failed my own quality check: ${checked.log.slice(0, 2).join('; ')}`);
+      html = checked.html;
+      files.push({ name: 'index.html', data: html.slice(0, 80000) });
+      if (ctx.site) {
+        fs.mkdirSync(path.join(ctx.site, 'products', slug), { recursive: true });
+        fs.writeFileSync(path.join(ctx.site, 'products', slug, 'index.html'), html);
+      }
     }
     files.push({ name: 'README.txt', data: `${title}\n\n${r.description || ''}\n\nMade by Loki the cat (lokistown.github.io). Personal and commercial use allowed; please do not resell the files themselves.\n` });
     const dir = mem.p('products', slug);
@@ -214,7 +226,14 @@ Reply as JSON: {"type": "art_pack|template", "title": "product title", "descript
     };
     products.unshift(product);
     mem.saveList('products.json', products, 300);
-    mem.addDiary(now.date, now.time, `Made something to sell: ${title}`, r.diary || `I packed up "${title}" for my shop.`);
+    if (r.type === 'art_pack' && ctx.site) {
+      const dir = path.join(ctx.site, 'products', slug);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'index.html'), `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:system-ui;background:#fff8ec;color:#3b2416;max-width:900px;margin:auto;padding:20px}img{width:180px;image-rendering:pixelated;border:3px solid #3b2416;border-radius:12px;margin:6px}</style><h1>${title}</h1><p>${(r.description || '').replace(/</g, '&lt;')}</p>${items.map((f) => `<img src="../../gallery/${f}" alt="">`).join('')}<p><a href="../../">← Loki's Town</a></p>`);
+    }
+    product.preview = `products/${slug}/`;
+    mem.saveList('products.json', products, 300);
+    mem.addDiary(now.date, now.time, `Made something to sell: ${title}`, r.diary || `I packed up "${title}" for my shop.`, { type: 'url', url: `products/${slug}/` });
     return { title, summary: `prepared "${title}" for the shop`, xp: 15, location: 'workshop' };
   },
 
@@ -260,7 +279,7 @@ Reply as JSON: {"type": "...", "name": "short name", "description": "one sentenc
     }
     props.push(prop);
     mem.saveTown(town);
-    mem.addDiary(now.date, now.time, `New in town: ${name}`, r.diary || r.description || `I added ${name} to my town.`);
+    mem.addDiary(now.date, now.time, `New in town: ${name}`, r.diary || r.description || `I added ${name} to my town.`, prop.x != null ? { type: 'place', x: prop.x, z: prop.z } : { type: 'building', id: prop.building });
     return { title: name, summary: `added ${type === 'mural' ? 'a mural' : `a ${type.replace('_', ' ')}`} to town: "${name}"`, xp: 9 };
   },
 
@@ -289,6 +308,45 @@ Reply as JSON: {"title": "short name", "pitch": "2 sentences", "steps": ["step",
     }
     mem.addDiary(now.date, now.time, `Business idea: ${idea.title}`, r.diary || idea.pitch);
     return { title: idea.title, summary: `came up with a business idea: ${idea.title}`, xp: 6, location: 'control' };
+  },
+
+  async make_game(ctx, choice) {
+    const { brain, mem, system, now } = ctx;
+    const games = mem.list('games.json');
+    const r = await brain.ask(
+      system,
+      `[[GAME]] You decided: "${choice.plan}". Your games so far: ${games.map((g) => g.title).join(', ') || 'none'}.
+Design and code ONE small, ORIGINAL, genuinely fun browser game (never a copy of a known game, its name, characters or look).
+Rules: a single self-contained HTML file; <canvas> graphics drawn in code; no external files, fonts or libraries;
+works with keyboard AND touch; has a title screen, score, game over and restart; cozy colours; you or Pip can star in it.
+Keep it under 30 KB and make sure the code is complete and correct.
+Reply as JSON: {"title": "game title", "description": "2 sentences", "howto": "controls in one line", "html": "<!doctype html>... complete file", "diary": "one sentence"}`,
+      { json: true, quality: 'high' },
+    );
+    const title = clip(r.title || 'Untitled game', 50);
+    if (String(r.html || '').length < 500) throw new Error('Game came out too small');
+    const checked = await reviewAndFix(ctx, String(r.html), 'browser game');
+    if (!checked.ok) throw new Error(`Game failed my own quality check: ${checked.log.slice(0, 2).join('; ')}`);
+    let slug = slugify(title, 30);
+    if (games.some((g) => g.slug === slug)) slug += `-${Date.now().toString(36).slice(-3)}`;
+    const url = `https://lokistown.github.io/games/${slug}/`;
+    if (ctx.site) {
+      fs.mkdirSync(path.join(ctx.site, 'games', slug), { recursive: true });
+      fs.writeFileSync(path.join(ctx.site, 'games', slug, 'index.html'), checked.html);
+    }
+    let repo = null;
+    try {
+      repo = await publishRepo(`game-${slug}`, `${title} — a game made by Loki the cat. ${clip(r.description || '', 200)}`, url, [
+        { path: 'index.html', content: checked.html, message: `Loki made ${title}` },
+        { path: 'README.md', content: `# ${title}\n\n${r.description || ''}\n\n**How to play:** ${r.howto || ''}\n\n▶️ Play it: ${url}\n\nMade by **Loki**, an autonomous orange cat who lives in [Loki's Town](https://lokistown.github.io).\n` },
+      ]);
+    } catch (e) {
+      mem.event('repo_failed', { summary: clip(e.message, 200) });
+    }
+    games.unshift({ slug, title, description: clip(r.description || '', 300), howto: clip(r.howto || '', 160), url, repo, date: now.date });
+    mem.saveList('games.json', games, 200);
+    mem.addDiary(now.date, now.time, `New game: ${title}`, r.diary || `I made a game called ${title}!`, { type: 'url', url: `games/${slug}/` });
+    return { title, summary: `made a game called "${title}"${repo ? ' and published it on GitHub' : ''}`, xp: 20, location: 'workshop' };
   },
 
   async make_wish({ brain, mem, system, now }, choice) {

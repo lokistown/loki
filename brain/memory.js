@@ -169,11 +169,11 @@ export class Memory {
   }
 
   // ---- diary (one markdown file per day) ----
-  addDiary(dateStr, timeStr, title, text) {
+  addDiary(dateStr, timeStr, title, text, link = null) {
     const file = this.p('diary', `${dateStr}.md`);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const header = fs.existsSync(file) ? '' : `# ${dateStr}\n\n`;
-    fs.appendFileSync(file, `${header}## ${timeStr} — ${title}\n\n${text.trim()}\n\n`);
+    fs.appendFileSync(file, `${header}## ${timeStr} — ${title}\n\n${text.trim()}\n${link ? `\n<!-- link: ${JSON.stringify(link)} -->\n` : ''}\n`);
   }
 
   diaryEntries(limit = 40) {
@@ -187,7 +187,13 @@ export class Memory {
       for (const part of parts.reverse()) {
         const [head, ...rest] = part.split('\n');
         const [time, ...titleBits] = head.split(' — ');
-        out.push({ date, time: time.trim(), title: titleBits.join(' — ').trim(), text: rest.join('\n').trim() });
+        const body = rest.join('\n');
+        const lm = body.match(/<!-- link: (.+?) -->/);
+        let link = null;
+        try {
+          link = lm ? JSON.parse(lm[1]) : null;
+        } catch {}
+        out.push({ date, time: time.trim(), title: titleBits.join(' — ').trim(), text: body.replace(/<!-- link: .+? -->/g, '').trim(), ...(link ? { link } : {}) });
         if (out.length >= limit) return out;
       }
     }

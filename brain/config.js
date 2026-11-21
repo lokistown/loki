@@ -36,14 +36,15 @@ export const DEFAULT_ROOMS = {
   library: ['library', 'library'],
   shop: ['shop'],
   tower: ['library'],
+  arcade: ['arcade', 'cafe'],
   other: ['living'],
 };
 export const ENTERABLE = Object.keys(DEFAULT_ROOMS);
 export const ROOM_ACTS = {
   hall: ['greet'], living: ['relax', 'radio'], kitchen: ['eat', 'cook'], bedroom: ['sleep', 'stretch'], laundry: ['laundry'],
   music: ['sing', 'piano'], studio: ['paint'], control: ['work'], workshop: ['build', 'print'], storage: ['tidy'], bakery: ['bake'],
-  cafe: ['coffee', 'sit'], gallery: ['admire'], library: ['read'], shop: ['sell'], garden_room: ['garden'],
+  cafe: ['coffee', 'sit'], gallery: ['admire'], library: ['read'], shop: ['sell'], garden_room: ['garden'], bathroom: ['bath'], arcade: ['play'],
 };
 export const OUTDOOR_ACTS = { park: ['sit', 'stroll'], garden: ['garden', 'sit', 'stroll'], fountain: ['watch'], tree: ['nap'], market: ['sell'] };
 export const PLAZA_ACTS = ['stroll', 'sit', 'mail', 'write'];
-export const ADDABLE_ROOMS = ['kitchen', 'bedroom', 'laundry', 'music', 'studio', 'workshop', 'storage', 'library', 'cafe', 'gallery', 'garden_room', 'living'];
+export const ADDABLE_ROOMS = ['kitchen', 'bedroom', 'bathroom', 'laundry', 'music', 'studio', 'workshop', 'storage', 'library', 'cafe', 'gallery', 'garden_room', 'arcade', 'living'];

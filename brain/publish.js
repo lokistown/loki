@@ -40,9 +40,10 @@ export function publishSite(siteDir, mem, state, extra = {}) {
   write(path.join(data, 'town.json'), mem.loadTown());
   write(path.join(data, 'diary.json'), mem.diaryEntries(40));
   write(path.join(data, 'gallery.json'), mem.list('gallery.json').slice(0, 120));
+  write(path.join(data, 'games.json'), mem.list('games.json').slice(0, 60));
   write(path.join(data, 'music.json'), mem.list('music.json').slice(0, 60));
   write(path.join(data, 'wishes.json'), mem.list('wishes.json').slice(0, 30).map(({ text, why, status, created }) => ({ text, why, status, created })));
-  write(path.join(data, 'products.json'), mem.list('products.json').slice(0, 60).map(({ title, description, status, url, price, type, created }) => ({ title, description, status, url, price, type, created })));
+  write(path.join(data, 'products.json'), mem.list('products.json').slice(0, 60).map(({ title, description, status, url, price, type, created, preview }) => ({ title, description, status, url, price, type, created, preview })));
   // copy new gallery images
   const artDir = mem.p('art');
   const galDir = path.join(siteDir, 'gallery');

@@ -74,6 +74,25 @@ export default {
         return json(req, { items: results, kept: results.filter((r) => r.status === 'kept').length });
       }
 
+      // ---------- shop webhooks: Ko-fi and Gumroad report every sale/tip here ----------
+      if (p === '/hooks/kofi' && req.method === 'POST') {
+        const form = await req.formData();
+        const d = JSON.parse(String(form.get('data') || '{}'));
+        const verified = env.KOFI_TOKEN ? d.verification_token === env.KOFI_TOKEN : false;
+        if (env.KOFI_TOKEN && !verified) return new Response('no', { status: 401 });
+        const items = Array.isArray(d.shop_items) ? d.shop_items.map((i) => i.direct_link_code || i.variation_name || 'item').join(', ') : '';
+        await env.DB.prepare('INSERT OR IGNORE INTO sales (id, source, type, amount, currency, product, from_name, message, is_public, created, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(`kofi-${d.message_id || d.kofi_transaction_id || Date.now()}`, 'kofi', String(d.type || 'Donation'), Number(d.amount) || 0, String(d.currency || 'USD'), items || String(d.tier_name || ''), d.is_public ? String(d.from_name || '').slice(0, 40) : '', d.is_public ? String(d.message || '').slice(0, 300) : '', d.is_public ? 1 : 0, Date.now(), verified ? 1 : 0).run();
+        return new Response('ok');
+      }
+      if (p === '/hooks/gumroad' && req.method === 'POST') {
+        const f = await req.formData();
+        if (env.GUMROAD_SELLER && f.get('seller_id') !== env.GUMROAD_SELLER) return new Response('no', { status: 401 });
+        await env.DB.prepare('INSERT OR IGNORE INTO sales (id, source, type, amount, currency, product, from_name, message, is_public, created, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(`gumroad-${f.get('sale_id') || Date.now()}`, 'gumroad', f.get('test') === 'true' ? 'Test sale' : 'Sale', (Number(f.get('price')) || 0) / 100, String(f.get('currency') || 'usd').toUpperCase(), String(f.get('product_name') || '').slice(0, 80), '', '', 0, Date.now(), env.GUMROAD_SELLER ? 1 : 0).run();
+        return new Response('ok');
+      }
+
       // ---------- Loki's brain only ----------
       if (p.startsWith('/admin/')) {
         const given = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
@@ -82,6 +101,11 @@ export default {
           const limit = Math.min(30, Number(url.searchParams.get('limit')) || 15);
           const { results } = await env.DB.prepare("SELECT id, visitor_id, nick, text, has_image, created FROM offerings WHERE status = 'pending' ORDER BY created ASC LIMIT ?").bind(limit).all();
           return json(req, { items: results.map((r) => ({ id: r.id, visitorId: r.visitor_id, nick: r.nick, text: r.text, hasImage: !!r.has_image, created: r.created })) });
+        }
+        if (p === '/admin/sales') {
+          const since = Number(url.searchParams.get('since')) || 0;
+          const { results } = await env.DB.prepare('SELECT * FROM sales WHERE created > ? ORDER BY created ASC LIMIT 100').bind(since).all();
+          return json(req, { items: results });
         }
         if (p === '/admin/resolve' && req.method === 'POST') {
           const { items = [] } = await req.json();

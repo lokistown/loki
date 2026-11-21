@@ -19,3 +19,16 @@ CREATE TABLE IF NOT EXISTS images (
   mime TEXT NOT NULL,
   data BLOB NOT NULL
 );
+CREATE TABLE IF NOT EXISTS sales (
+  id TEXT PRIMARY KEY,
+  source TEXT,
+  type TEXT,
+  amount REAL,
+  currency TEXT,
+  product TEXT,
+  from_name TEXT,
+  message TEXT,
+  is_public INTEGER,
+  created INTEGER,
+  verified INTEGER
+);

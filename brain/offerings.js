@@ -65,3 +65,22 @@ Reply as JSON: {"items": [{"i": <index>, "keep": true, "reply": "...", "question
   if (r.inspiration) state.inspirations = [clip(r.inspiration, 80), ...(state.inspirations || [])].slice(0, 10);
   return { read: items.length, kept };
 }
+
+// Sales and tips reported by Ko-fi / Gumroad webhooks -> Loki's wallet.
+export async function syncSales({ mem, state, now }) {
+  if (!mailboxReady()) return [];
+  const { items = [] } = await call(`/admin/sales?since=${state.salesSince || 0}`);
+  if (!items.length) return [];
+  const ledger = mem.list('ledger.json');
+  const seen = new Set(ledger.map((e) => e.id).filter(Boolean));
+  const fresh = [];
+  for (const s of items) {
+    state.salesSince = Math.max(state.salesSince || 0, s.created);
+    if (seen.has(s.id)) continue;
+    const entry = { id: s.id, date: now.date, amount: Number(s.amount) || 0, currency: String(s.currency || 'USD').toUpperCase(), source: s.source, type: s.type, note: `${s.source === 'kofi' ? 'Ko-fi' : 'Gumroad'} ${s.type}${s.product ? `: ${s.product}` : ''}${s.from_name ? ` from ${s.from_name}` : ''}`, verified: !!s.verified, test: /test/i.test(s.type) };
+    ledger.unshift(entry);
+    fresh.push({ ...entry, message: s.message });
+  }
+  mem.saveList('ledger.json', ledger, 2000);
+  return fresh;
+}
