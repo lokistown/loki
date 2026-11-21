@@ -1,0 +1,81 @@
+name: Loki work session
+
+on:
+  schedule:
+    # Every 2 hours (UTC). Loki checks UK time himself and sleeps 23:00-07:00.
+    - cron: '17 */2 * * *'
+  workflow_dispatch: {}
+
+# Never run two sessions at once (protects memory).
+concurrency:
+  group: loki-session
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  session:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout brain
+        uses: actions/checkout@v4
+        with:
+          path: loki
+
+      - name: Checkout memory
+        uses: actions/checkout@v4
+        with:
+          repository: lokistown/loki-memory
+          token: ${{ secrets.LOKI_PAT }}
+          path: loki-memory
+
+      - name: Checkout website
+        uses: actions/checkout@v4
+        with:
+          repository: lokistown/lokistown.github.io
+          token: ${{ secrets.LOKI_PAT }}
+          path: site
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Loki wakes up
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: node loki/brain/session.js --memory loki-memory --site site
+
+      # Runs even if the session crashed half-way, so every finished task is saved.
+      - name: Save memory and publish website
+        if: always()
+        run: |
+          git config --global user.name "Loki"
+          git config --global user.email "loki@users.noreply.github.com"
+          save() {
+            dir="$1"; msg="$2"
+            cd "$GITHUB_WORKSPACE/$dir"
+            git add -A
+            if git diff --cached --quiet; then echo "$dir: nothing new"; return 0; fi
+            git commit -q -m "$msg"
+            for i in 1 2 3; do
+              git pull -q --rebase && git push -q && return 0
+              sleep $((i * 5))
+            done
+            echo "::error::could not push $dir"; return 1
+          }
+          STAMP="$(TZ=Europe/London date '+%Y-%m-%d %H:%M')"
+          save loki-memory "Session $STAMP"
+          save site "Loki's town update $STAMP"
+
+      - name: Daily memory snapshot
+        if: always()
+        run: |
+          cd "$GITHUB_WORKSPACE/loki-memory"
+          TAG="snapshot-$(TZ=Europe/London date '+%Y-%m-%d')"
+          if ! git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
+            git tag "$TAG" && git push -q origin "$TAG" && echo "Snapshot $TAG saved"
+          fi

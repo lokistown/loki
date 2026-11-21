@@ -1,0 +1,12 @@
+{
+  "name": "loki",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Loki, an autonomous orange cat living in a pixel-art town on the internet.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "session": "node brain/session.js",
+    "test:local": "node brain/session.js --memory ../loki-memory --site ../lokistown.github.io --mock --ignore-sleep"
+  }
+}
