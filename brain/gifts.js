@@ -47,29 +47,57 @@ export async function fetchGifts() {
 
 // Loki tells his human something. During a GitHub work session the message is queued and sent
 // at the very end (brain/flush-notify.js), after his work has been published, so every link works.
-export async function notifyOwner(title, body) {
+// `go` is a deep link into the town (e.g. "art:<file>"): tapping the notification opens Loki's
+// town right in front of that thing.
+export const SITE = 'https://lokistown.github.io';
+export const goUrl = (go) => (go ? `${SITE}/?go=${encodeURIComponent(go)}` : `${SITE}/`);
+
+async function queue(line) {
   if (process.env.RUNNER_TEMP && !process.env.LOKI_SEND_NOW) {
     const fs = await import('node:fs');
-    fs.appendFileSync(`${process.env.RUNNER_TEMP}/loki-outbox.jsonl`, JSON.stringify({ title, body }) + '\n');
+    fs.appendFileSync(`${process.env.RUNNER_TEMP}/loki-outbox.jsonl`, JSON.stringify(line) + '\n');
     return true;
   }
-  return sendNow(title, body);
+  return line.type === 'announce' ? announceNow(line.items) : sendNow(line.title, line.body, line.go);
+}
+export function notifyOwner(title, body, go = null) {
+  return queue({ title, body, go });
+}
+// One quiet push per session listing what Loki made, each with a button that opens it in town.
+export function announce(items) {
+  return items.length ? queue({ type: 'announce', items }) : false;
 }
 
-export async function sendNow(title, body) {
-  // phone push via ntfy.sh (free, no account): install the ntfy app and subscribe to your private topic
+async function push(msg) {
   const topic = process.env.LOKI_NTFY_TOPIC;
-  if (topic) {
-    try {
-      await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
-        method: 'POST',
-        headers: { Title: title.replace(/[^ -~]/g, '').trim() || 'Loki needs you', Tags: 'cat', Click: `https://github.com/${REPO}/issues` },
-        body: body.slice(0, 1000),
-      });
-    } catch (e) {
-      console.warn('ntfy failed:', e.message);
-    }
+  if (!topic) return false;
+  try {
+    const r = await fetch('https://ntfy.sh/', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ topic, tags: ['cat'], ...msg }) });
+    return r.ok;
+  } catch (e) {
+    console.warn('ntfy failed:', e.message);
+    return false;
   }
+}
+export function announceNow(items) {
+  const list = items.slice(0, 6);
+  return push({
+    title: list.length === 1 ? `Loki made ${list[0].title}` : `Loki made ${list.length} new things`,
+    message: list.map((i) => `- ${i.kind}: ${i.title}`).join('\n') + '\n\nTap to see it in his town.',
+    click: goUrl(list[0].go),
+    priority: 2,
+    actions: list.slice(0, 3).map((i) => ({ action: 'view', label: `See ${i.kind}`.slice(0, 40), url: goUrl(i.go), clear: true })),
+  });
+}
+
+export async function sendNow(title, body, go = null) {
+  // phone push via ntfy.sh (free, no account): install the ntfy app and subscribe to your private topic
+  await push({
+    title: title.trim() || 'Loki needs you',
+    message: body.slice(0, 1500),
+    click: go ? goUrl(go) : `https://github.com/${REPO}/issues`,
+    actions: go ? [{ action: 'view', label: 'See it in town', url: goUrl(go) }, { action: 'view', label: 'Reply to Loki', url: `https://github.com/${REPO}/issues` }] : [],
+  });
   if (!process.env.GH_TOKEN) return false;
   try {
     try {

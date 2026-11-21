@@ -9,6 +9,8 @@ import { findSpot } from './towngeo.js';
 import { reviewAndFix, scriptErrors } from './quality.js';
 import { publishRepo } from './github.js';
 import { notifyOwner } from './gifts.js';
+import { creative, CREATIVE_ACTIONS, paletteHint } from './creative.js';
+import { validateHtml, qrUrl } from './tools.js';
 
 export const PROP_TYPES = ['statue_cat', 'statue_fish', 'sculpture', 'birdbath', 'bench', 'lamp', 'flowerbed', 'rock_garden', 'signpost', 'kite', 'tree', 'planter'];
 
@@ -24,6 +26,7 @@ export const ACTIONS = {
   make_game: 'Design and code a small, fun, original browser game (it gets its own GitHub repo and appears in your arcade). Takes effort; do it when you feel creative.',
   update_website: 'Design, code and improve YOUR OWN website (lokistown.github.io/home/) that shows off and sells your art, products, games and music. Do it when you have new things to show.',
   make_wish: 'Ask your human for something real they could give you (a tool, an API key, a promotion, uploading a product, a new feature). Max 3 open wishes.',
+  ...CREATIVE_ACTIONS,
   rest: 'Have a short nap, stretch, or just look around (use rarely).',
 };
 
@@ -35,6 +38,7 @@ export async function runAction(ctx, choice) {
 }
 
 const handlers = {
+  ...creative,
   async write_diary({ brain, mem, system, now }, choice) {
     const r = await brain.ask(
       system,
@@ -88,14 +92,15 @@ Reply as JSON: {"target": "<id or new>", "name": "name", "kind": "<kind>", "colo
     b.description = clip(r.description || b.description, 160);
     b.updated = now.date;
     mem.saveTown(town);
-    mem.addDiary(now.date, now.time, `Town: ${summary}`, r.diary || summary, { type: 'building', id: b.id });
-    return { title: summary, summary, xp: 10, location: b.id };
+    mem.addDiary(now.date, now.time, `Town: ${summary}`, r.diary || summary, { type: 'go', go: `building:${b.id}` });
+    return { title: summary, summary, xp: 10, location: b.id, made: { kind: 'town', title: summary, go: `building:${b.id}` } };
   },
 
   async make_art({ brain, mem, system, site, now }, choice) {
+    const hint = await paletteHint();
     const r = await brain.ask(
       system,
-      `[[ART]] You decided: "${choice.plan}".
+      `[[ART]] You decided: "${choice.plan}". ${hint}
 Make an original 32x32 pixel-art picture as an SVG made ONLY of <rect> elements
 (x, y, width, height as whole numbers 0-32, fill as #rrggbb). Use a cozy limited palette (6-12 colours),
 fill the whole 32x32 canvas with a background, and make the subject clearly readable. Use at least 60 rects.
@@ -114,8 +119,8 @@ Reply as JSON: {"title": "title", "description": "one sentence", "svg": "<svg ..
     const gallery = mem.readJson('gallery.json', []);
     gallery.unshift({ file, title, description: clip(r.description, 200), date: now.date, forSale: false });
     mem.writeJson('gallery.json', gallery.slice(0, config.maxGalleryItems));
-    mem.addDiary(now.date, now.time, `New art: ${title}`, r.description || title, { type: 'url', url: `gallery/${file}` });
-    return { title, summary: `made a pixel-art picture "${title}"`, xp: 12, location: 'gallery' };
+    mem.addDiary(now.date, now.time, `New art: ${title}`, r.description || title, { type: 'go', go: `art:${file}` });
+    return { title, summary: `made a pixel-art picture "${title}"`, xp: 12, location: 'gallery', made: { kind: 'picture', title, go: `art:${file}` } };
   },
 
   async learn_skill({ brain, mem, system, state, now }, choice) {
@@ -162,8 +167,9 @@ Reply as JSON: {"title": "song title", "mood": "one or two words", "bpm": 70-150
     const title = clip(r.title || 'Untitled tune', 60);
     songs.unshift({ title, mood: clip(r.mood || '', 30), bpm: Math.max(60, Math.min(160, Number(r.bpm) || 100)), wave: ['triangle', 'sine', 'square'].includes(r.wave) ? r.wave : 'triangle', notes, bass: clean(r.bass, 28, 60, 32), date: now.date });
     mem.saveList('music.json', songs, 200);
-    mem.addDiary(now.date, now.time, `New song: ${title}`, r.diary || `I wrote a song called ${title}.`, { type: 'music' });
-    return { title, summary: `wrote a song called "${title}"`, xp: 12, location: 'house' };
+    const songGo = `song:${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`;
+    mem.addDiary(now.date, now.time, `New song: ${title}`, r.diary || `I wrote a song called ${title}.`, { type: 'go', go: songGo });
+    return { title, summary: `wrote a song called "${title}"`, xp: 12, location: 'house', made: { kind: 'song', title, go: songGo } };
   },
 
   async make_product(ctx, choice) {
@@ -233,10 +239,10 @@ Reply as JSON: {"type": "art_pack|template", "title": "product title", "descript
       fs.writeFileSync(path.join(dir, 'index.html'), `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:system-ui;background:#fff8ec;color:#3b2416;max-width:900px;margin:auto;padding:20px}img{width:180px;image-rendering:pixelated;border:3px solid #3b2416;border-radius:12px;margin:6px}</style><h1>${title}</h1><p>${(r.description || '').replace(/</g, '&lt;')}</p>${items.map((f) => `<img src="../../gallery/${f}" alt="">`).join('')}<p><a href="../../">← Loki's Town</a></p>`);
     }
     product.preview = `products/${slug}/`;
-    await notifyOwner(`Loki made "${title}" - please list it`, `I finished a product and checked it myself.\n\nTitle: ${title}\nPrice: $${product.price}\nDescription: ${product.description}\nTags: ${product.tags.join(', ')}\n\nPreview: https://lokistown.github.io/products/${slug}/\nFile: https://github.com/lokistown/loki-memory/blob/main/${product.file}\n\nWhen it is on Gumroad, reply here with: Listed: ${title} followed by the Gumroad link (for example: Listed: ${title} https://lokistown.gumroad.com/l/xyz) so I can show it in my shop.`);
+    await notifyOwner(`Loki made "${title}" - please list it`, `I finished a product and checked it myself.\n\nTitle: ${title}\nPrice: $${product.price}\nDescription: ${product.description}\nTags: ${product.tags.join(', ')}\n\nPreview: https://lokistown.github.io/products/${slug}/\nFile: https://github.com/lokistown/loki-memory/blob/main/${product.file}\n\nWhen it is on Gumroad, reply here with: Listed: ${title} followed by the Gumroad link (for example: Listed: ${title} https://lokistown.gumroad.com/l/xyz) so I can show it in my shop.`, `product:${slug}`);
     mem.saveList('products.json', products, 300);
-    mem.addDiary(now.date, now.time, `Made something to sell: ${title}`, r.diary || `I packed up "${title}" for my shop.`, { type: 'url', url: `products/${slug}/` });
-    return { title, summary: `prepared "${title}" for the shop`, xp: 15, location: 'workshop' };
+    mem.addDiary(now.date, now.time, `Made something to sell: ${title}`, r.diary || `I packed up "${title}" for my shop.`, { type: 'go', go: `product:${slug}` });
+    return { title, summary: `prepared "${title}" for the shop`, xp: 15, location: 'workshop', made: { kind: 'product', title, go: `product:${slug}` } };
   },
 
   async decorate({ brain, mem, system, town, now, state }, choice) {
@@ -281,8 +287,9 @@ Reply as JSON: {"type": "...", "name": "short name", "description": "one sentenc
     }
     props.push(prop);
     mem.saveTown(town);
-    mem.addDiary(now.date, now.time, `New in town: ${name}`, r.diary || r.description || `I added ${name} to my town.`, prop.x != null ? { type: 'place', x: prop.x, z: prop.z } : { type: 'building', id: prop.building });
-    return { title: name, summary: `added ${type === 'mural' ? 'a mural' : `a ${type.replace('_', ' ')}`} to town: "${name}"`, xp: 9 };
+    const decoGo = prop.x != null ? `prop:${prop.id}` : `building:${prop.building}`;
+    mem.addDiary(now.date, now.time, `New in town: ${name}`, r.diary || r.description || `I added ${name} to my town.`, { type: 'go', go: decoGo });
+    return { title: name, summary: `added ${type === 'mural' ? 'a mural' : `a ${type.replace('_', ' ')}`} to town: "${name}"`, xp: 9, made: { kind: 'town', title: name, go: decoGo } };
   },
 
   async business_idea({ brain, mem, system, now }, choice) {
@@ -347,8 +354,8 @@ Reply as JSON: {"title": "game title", "description": "2 sentences", "howto": "c
     }
     games.unshift({ slug, title, description: clip(r.description || '', 300), howto: clip(r.howto || '', 160), url, repo, date: now.date });
     mem.saveList('games.json', games, 200);
-    mem.addDiary(now.date, now.time, `New game: ${title}`, r.diary || `I made a game called ${title}!`, { type: 'url', url: `games/${slug}/` });
-    return { title, summary: `made a game called "${title}"${repo ? ' and published it on GitHub' : ''}`, xp: 20, location: 'workshop' };
+    mem.addDiary(now.date, now.time, `New game: ${title}`, r.diary || `I made a game called ${title}!`, { type: 'go', go: `game:${slug}` });
+    return { title, summary: `made a game called "${title}"${repo ? ' and published it on GitHub' : ''}`, xp: 20, location: 'workshop', made: { kind: 'game', title, go: `game:${slug}` } };
   },
 
   async update_website(ctx, choice) {
@@ -373,6 +380,9 @@ It lives at ${base}/home/ and must make people want to buy your things and visit
 - Games: ${games.map((g) => `"${g.title}" play: ${g.url}`).join(' | ') || 'none yet'}
 - Songs: ${songs.map((s) => s.title).join(', ') || 'none yet'} (they can be played in your town's book)
 - Other places your human set up for you: ${resources.filter((x) => x.url).map((x) => `${x.name}: ${x.url}`).join(' | ') || 'none yet'}
+- Stories you wrote: ${mem.list('stories.json').slice(0, 6).map((s) => `"${s.title}" read: ${base}/stories/${s.slug}/${s.cover ? ` cover image: ${base}/${s.cover}` : ''}`).join(' | ') || 'none yet'}
+- Your diary as an RSS feed people can follow: ${base}/feed.xml
+- A QR code image that opens your town (use as <img>): ${qrUrl(base + '/')}
 - Latest diary: ${diary.map((d) => `${d.date} ${d.title}`).join('; ')}
 Make it a complete, beautiful, responsive single-file page in your own style (header with your portrait, about you and Pip, shop section, gallery grid, games, latest news, links, footer).
 Inline CSS (and tiny JS only if needed), no external files except the image links above. Write it as yourself.
@@ -383,13 +393,14 @@ Reply as JSON: {"html": "<!doctype html>... complete page", "notes": "one line a
     if (html.length < 3000) throw new Error('Website came out too small');
     const checked = await reviewAndFix(ctx, html, 'personal website');
     if (!checked.ok) throw new Error(`My website failed my own quality check: ${checked.log.slice(0, 2).join('; ')}`);
+    const htmlErrors = await validateHtml(checked.html);
     if (ctx.site) {
       fs.mkdirSync(path.join(ctx.site, 'home'), { recursive: true });
       fs.writeFileSync(path.join(ctx.site, 'home', 'index.html'), checked.html);
     }
-    mem.writeJson('website.json', { version: site.version + 1, notes: clip(r.notes || '', 200), updated: now.date });
-    mem.addDiary(now.date, now.time, 'I updated my website', r.diary || 'I gave my website a makeover.', { type: 'url', url: 'home/' });
-    return { title: 'my website', summary: `rebuilt his own website (version ${site.version + 1})`, xp: 14, location: 'control' };
+    mem.writeJson('website.json', { version: site.version + 1, notes: clip([r.notes || '', htmlErrors.length ? `HTML checker found: ${htmlErrors.slice(0, 3).join('; ')}` : ''].filter(Boolean).join(' · '), 300), updated: now.date });
+    mem.addDiary(now.date, now.time, 'I updated my website', r.diary || 'I gave my website a makeover.', { type: 'go', go: 'home' });
+    return { title: 'my website', summary: `rebuilt his own website (version ${site.version + 1})`, xp: 14, location: 'control', made: { kind: 'website', title: `his website (version ${site.version + 1})`, go: 'home' } };
   },
 
   async make_wish({ brain, mem, system, now }, choice) {

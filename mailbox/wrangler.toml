@@ -15,3 +15,12 @@ database_id = "dcb06306-c3da-4614-98e3-1b230e897e11"
 # Backup alarm clock for Loki (see wakeLoki in src/index.js)
 [triggers]
 crons = ["*/30 * * * *"]
+
+# Live town: who is walking around right now
+[[durable_objects.bindings]]
+name = "TOWN"
+class_name = "Town"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Town"]

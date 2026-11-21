@@ -54,6 +54,7 @@ jobs:
           LOKI_NTFY_TOPIC: ${{ secrets.LOKI_NTFY_TOPIC }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
         run: node loki/brain/session.js --memory loki-memory --site site
 
       # Runs even if the session crashed half-way, so every finished task is saved.

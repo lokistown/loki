@@ -35,6 +35,102 @@ async function wakeLoki(env) {
   await fetch('https://api.github.com/repos/lokistown/loki/actions/workflows/session.yml/dispatches', { method: 'POST', headers: { ...h, 'content-type': 'application/json' }, body: JSON.stringify({ ref: 'main' }) });
 }
 
+
+// ---------- Live town: who is walking around right now (one Durable Object, WebSocket hibernation) ----------
+const DEFAULT_TOWN = { multiplayer: true, showCount: true, throwing: true };
+const KINDS = ['yarn', 'plane', 'flower', 'snow', 'pillow', 'fish'];
+const MAX_PEOPLE = 80;
+const num = (v, lim) => Math.max(-lim, Math.min(lim, Math.round((Number(v) || 0) * 100) / 100));
+export class Town {
+  constructor(ctx, env) {
+    this.ctx = ctx;
+    this.env = env;
+  }
+  async settings() {
+    return { ...DEFAULT_TOWN, ...((await this.ctx.storage.get('settings')) || {}) };
+  }
+  people(except) {
+    return this.ctx.getWebSockets().filter((w) => w !== except && w.readyState === 1 && w.deserializeAttachment()?.nick);
+  }
+  send(ws, m) {
+    try { ws.send(JSON.stringify(m)); } catch {}
+  }
+  broadcast(m, except) {
+    const s = JSON.stringify(m);
+    for (const w of this.people(except)) try { w.send(s); } catch {}
+  }
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (url.pathname.endsWith('/settings')) {
+      let s = await this.settings();
+      if (req.method === 'POST') {
+        const b = await req.json().catch(() => ({}));
+        for (const k of Object.keys(DEFAULT_TOWN)) if (typeof b[k] === 'boolean') s[k] = b[k];
+        await this.ctx.storage.put('settings', s);
+        if (!s.multiplayer) for (const w of this.ctx.getWebSockets()) try { w.close(4000, 'off'); } catch {}
+        else this.broadcast({ t: 'settings', settings: s, online: this.people().length });
+      }
+      return new Response(JSON.stringify({ ...s, online: s.multiplayer ? this.people().length : 0 }), { headers: { 'content-type': 'application/json' } });
+    }
+    if (req.headers.get('upgrade') !== 'websocket') return new Response('expected websocket', { status: 426 });
+    const s = await this.settings();
+    if (!s.multiplayer || this.ctx.getWebSockets().length >= MAX_PEOPLE) return new Response('closed', { status: 403 });
+    const [client, server] = Object.values(new WebSocketPair());
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ id: crypto.randomUUID().slice(0, 8), nick: '', c: 0, p: [0, 0, 6, 0, 0], win: 0, n: 0, last: 0 });
+    return new Response(null, { status: 101, webSocket: client });
+  }
+  async webSocketMessage(ws, raw) {
+    if (typeof raw !== 'string' || raw.length > 400) return;
+    let m;
+    try { m = JSON.parse(raw); } catch { return; }
+    const a = ws.deserializeAttachment();
+    const now = Date.now();
+    if (now - a.win > 1000) { a.win = now; a.n = 0; }
+    if (++a.n > 20) return; // too chatty
+    if (m.t === 'hello') {
+      const first = !a.nick;
+      a.nick = String(m.nick || '').replace(/[^A-Za-z0-9_]/g, '').slice(0, 24) || 'visitor';
+      a.c = Math.abs(Math.floor(Number(m.c) || 0)) % 7;
+      if (Array.isArray(m.p)) a.p = [num(m.p[0], 2000), num(m.p[1], 300), num(m.p[2], 2000), num(m.p[3], 10), m.p[4] ? 1 : 0];
+      ws.serializeAttachment(a);
+      const s = await this.settings();
+      const others = this.people(ws).map((w) => { const o = w.deserializeAttachment(); return { id: o.id, nick: o.nick, c: o.c, p: o.p }; });
+      this.send(ws, { t: 'init', you: a.id, peers: others, settings: s, online: others.length + 1 });
+      this.broadcast({ t: 'join', id: a.id, nick: a.nick, c: a.c, p: a.p, online: others.length + 1, first }, ws);
+      return;
+    }
+    if (!a.nick) return;
+    if (m.t === 'p' && Array.isArray(m.p)) {
+      a.p = [num(m.p[0], 2000), num(m.p[1], 300), num(m.p[2], 2000), num(m.p[3], 10), m.p[4] ? 1 : 0];
+      ws.serializeAttachment(a);
+      this.broadcast({ t: 'p', id: a.id, p: a.p }, ws);
+    } else if (m.t === 'hi' || m.t === 'throw') {
+      if (now - a.last < 1200) return; // one hi/throw per 1.2 s
+      a.last = now;
+      ws.serializeAttachment(a);
+      const to = String(m.to || '').slice(0, 8);
+      if (m.t === 'hi') return this.broadcast({ t: 'hi', id: a.id, to }, ws);
+      if (!(await this.settings()).throwing) return;
+      const k = KINDS.includes(m.k) ? m.k : 'yarn';
+      if (!this.people(ws).some((w) => w.deserializeAttachment().id === to)) return;
+      this.broadcast({ t: 'throw', id: a.id, to, k }, ws);
+    }
+  }
+  async webSocketClose(ws) {
+    this.gone(ws);
+    try { ws.close(1000, 'bye'); } catch {}
+  }
+  async webSocketError(ws) {
+    this.gone(ws);
+  }
+  gone(ws) {
+    const a = ws.deserializeAttachment();
+    if (a?.nick) this.broadcast({ t: 'leave', id: a.id, online: this.people(ws).length }, ws);
+  }
+}
+const town = (env) => env.TOWN.get(env.TOWN.idFromName('main'));
+
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(wakeLoki(env));
@@ -44,6 +140,16 @@ export default {
     const p = url.pathname;
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors(req) });
     try {
+      // ---------- live town ----------
+      if (p === '/town/ws') {
+        const o = req.headers.get('origin') || '';
+        if (o && !ORIGINS.includes(o)) return new Response('no', { status: 403 });
+        return town(env).fetch(req);
+      }
+      if (p === '/api/town' && req.method === 'GET') {
+        const r = await town(env).fetch(new Request('https://town/settings'));
+        return json(req, await r.json());
+      }
       // ---------- public ----------
       if (p === '/api/offer' && req.method === 'POST') {
         const body = await req.json().catch(() => ({}));
@@ -115,6 +221,10 @@ export default {
           const limit = Math.min(30, Number(url.searchParams.get('limit')) || 15);
           const { results } = await env.DB.prepare("SELECT id, visitor_id, nick, text, has_image, created FROM offerings WHERE status = 'pending' ORDER BY created ASC LIMIT ?").bind(limit).all();
           return json(req, { items: results.map((r) => ({ id: r.id, visitorId: r.visitor_id, nick: r.nick, text: r.text, hasImage: !!r.has_image, created: r.created })) });
+        }
+        if (p === '/admin/town') {
+          const r = await town(env).fetch(new Request('https://town/settings', { method: req.method === 'POST' ? 'POST' : 'GET', body: req.method === 'POST' ? await req.text() : undefined }));
+          return json(req, await r.json());
         }
         if (p === '/admin/sales') {
           const since = Number(url.searchParams.get('since')) || 0;

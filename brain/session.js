@@ -15,7 +15,8 @@ import { writeControl } from './control.js';
 import { planSchedule, mapText, driftNeeds, applyNeeds } from './planner.js';
 import { fetchGifts, answerGift, ensureGiftLabel } from './gifts.js';
 import { readMailbox, mailboxReady, syncSales } from './offerings.js';
-import { notifyOwner } from './gifts.js';
+import { notifyOwner, announce } from './gifts.js';
+import { FREE_TOOLS, weather, holidays, useToolLog, writeFeeds, indexNow } from './tools.js';
 import { ukNow, isSleepHour, nightKey, timeOfDay, clip } from './util.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -34,6 +35,8 @@ export function availableTools() {
   if (process.env.GH_TOKEN) t.push('GitHub (publish repos, talk to your human)');
   if (process.env.LOKI_WORKER_URL) t.push('mailbox + shop sales');
   if (process.env.LOKI_NTFY_TOPIC) t.push('phone notifications to your human');
+  if (process.env.POLLINATIONS_TOKEN) t.push('Pollinations pollen key (unlimited pictures, no logo)');
+  for (const f of FREE_TOOLS) t.push(`${f.name} (${f.does})`);
   return t;
 }
 function buildSystem(state, town, mem) {
@@ -44,6 +47,8 @@ function buildSystem(state, town, mem) {
 - Level ${state.level} ${state.stage}, ${state.xp} XP (next level at ${xpForLevel(state.level + 1)} XP). Mood: ${state.mood}.
 - Needs (0-100): fullness ${n.fullness}, energy ${n.energy}, joy ${n.joy}, curiosity ${n.curiosity}, calm ${n.calm}.
 - Your friend Pip (a tiny grey mouse) rides on your head and goes everywhere with you.
+- Weather in your town right now (real UK weather): ${state.weather?.text || 'unknown'}.${state.holidays?.length ? ` Coming up: ${state.holidays.map((h) => `${h.name} on ${h.date}`).join(', ')}.` : ''}
+- Everything you make appears in your town: pictures on the Art Wall and in the gallery, games in the arcade corner, products on your shop stall, songs on the jukebox, stories on the book stand, your website on the big screen.
 - Skills: ${state.skills.map((s) => s.name).join(', ') || 'none yet'}.
 
 ## What your human has given you (use these in your plans!)
@@ -68,7 +73,7 @@ async function decide(ctx, done) {
     system,
     `[[DECIDE]] It is ${timeOfDay(now.hour)} (${now.time}, ${now.date}, UK).
 Already done this session: ${done.join('; ') || 'nothing yet'}.
-Lifetime counts: ${JSON.stringify(counts)}. Pictures: ${gallery}. Songs: ${mem.list('music.json').length}. Products ready to sell: ${products.filter((p) => p.status === 'ready').length}, listed: ${products.filter((p) => p.status === 'listed').length}, needing work (remake them better!): ${products.filter((p) => p.status === 'needs_work').map((p) => p.title).join(', ') || 'none'}. Open wishes: ${wishes}. Your own website: ${(() => { const w = mem.readJson('website.json', { version: 0 }); return w.version ? `version ${w.version}, last updated ${w.updated}` : 'you do NOT have one yet (update_website builds it)'; })()}.
+Lifetime counts: ${JSON.stringify(counts)}. Pictures: ${gallery}. Stories: ${mem.list('stories.json').length}. Books read: ${mem.list('books.json').length}. Latest research ideas: ${mem.list('research.json').slice(0, 2).flatMap((r) => r.ideas).join('; ') || 'none'}. Songs: ${mem.list('music.json').length}. Products ready to sell: ${products.filter((p) => p.status === 'ready').length}, listed: ${products.filter((p) => p.status === 'listed').length}, needing work (remake them better!): ${products.filter((p) => p.status === 'needs_work').map((p) => p.title).join(', ') || 'none'}. Open wishes: ${wishes}. Your own website: ${(() => { const w = mem.readJson('website.json', { version: 0 }); return w.version ? `version ${w.version}, last updated ${w.updated}` : 'you do NOT have one yet (update_website builds it)'; })()}.
 
 Recent diary:
 ${diary}
@@ -164,10 +169,23 @@ async function main() {
   const now = ukNow();
   const hoursSince = state.updated ? (Date.now() - new Date(state.updated)) / 3600000 : 0;
   driftNeeds(state, hoursSince);
+  // free tools that need no account: real weather and holidays for the town
+  useToolLog(mem);
+  const w = await weather();
+  if (w) state.weather = w;
+  if (state.holidaysDay !== now.date) {
+    state.holidays = await holidays();
+    state.holidaysDay = now.date;
+  }
   const ctx = { brain, mem, state, town, now, site: siteDir, system: buildSystem(state, town, mem) };
   const publish = (extra = {}) => {
     publishSite(siteDir, mem, state, extra);
-    writeControl(siteDir, mem, state, { providers: brain.log });
+    try {
+      writeFeeds(siteDir, mem);
+    } catch (e) {
+      console.warn('feeds failed:', e.message);
+    }
+    writeControl(siteDir, mem, state, { providers: brain.log, freeTools: FREE_TOOLS });
   };
 
   if (flag('init')) {
@@ -254,6 +272,7 @@ It's in his wallet in the Control Centre.`);
 
   // 3) tasks, leaving room for planning at the end
   let tasks = 0;
+  const made = [];
   while (tasks < config.maxTasksPerSession && brain.budgetLeft >= 3 && timeLeft() > 90_000) {
     let choice;
     try {
@@ -290,6 +309,7 @@ It's in his wallet in the Control Centre.`);
       mem.addDiary(now.date, ukNow().time, `Level ${levelUp}!`, `I reached level ${levelUp}. ${result.summary} did it.`);
     }
     done.push(result.summary);
+    if (result.made) made.push(result.made);
     mem.saveState(state);
     publish({});
     console.log(`✓ ${result.summary} (+${result.xp} XP, total ${state.xp}, level ${levelFor(state.xp)})`);
@@ -308,6 +328,14 @@ It's in his wallet in the Control Centre.`);
 
   state.ai.calls += brain.calls;
   mem.saveState(state);
+  // tell his human what he made (one quiet push with buttons that open each thing in town)
+  await announce(made);
+  // tell search engines about his pages once a day
+  if (state.indexNowDay !== now.date && siteDir) {
+    const urls = writeFeeds(siteDir, mem);
+    if (await indexNow(mem, siteDir, urls)) state.indexNowDay = now.date;
+    mem.saveState(state);
+  }
   mem.event('session_end', { session: state.sessions, tasks, calls: brain.calls, providers: [...new Set(brain.log.map((l) => `${l.provider}:${l.model}`))] });
   publish({});
   console.log(`Session ${state.sessions} done: ${tasks} tasks, ${brain.calls} AI calls via ${[...new Set(brain.log.map((l) => l.provider))].join(', ') || 'none'}.`);

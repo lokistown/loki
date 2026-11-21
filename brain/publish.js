@@ -12,7 +12,8 @@ function write(file, data) {
 export function publishSite(siteDir, mem, state, extra = {}) {
   if (!siteDir) return;
   const data = path.join(siteDir, 'data');
-  const { xp, level, stage, mood, location, activity, thought, sessions, tasksDone, skills, born, needs, pip, schedule, whatsOn, recent, thoughts, ideas } = state;
+  const { xp, level, stage, mood, location, activity, thought, sessions, tasksDone, skills, born, needs, pip, schedule, whatsOn, recent, thoughts, ideas, weather, holidays } = state;
+  const site = mem.readJson('website.json', { version: 0 });
   write(path.join(data, 'state.json'), {
     name: 'Loki',
     born,
@@ -34,6 +35,9 @@ export function publishSite(siteDir, mem, state, extra = {}) {
     recent,
     thoughts,
     ideas,
+    weather: weather || null,
+    holidays: holidays || [],
+    website: site.version ? { version: site.version, updated: site.updated } : null,
     skills: (skills || []).map((s) => ({ name: s.name, learned: s.learned })),
     updated: new Date().toISOString(),
   });
@@ -42,6 +46,8 @@ export function publishSite(siteDir, mem, state, extra = {}) {
   write(path.join(data, 'gallery.json'), mem.list('gallery.json').slice(0, 120));
   write(path.join(data, 'games.json'), mem.list('games.json').slice(0, 60));
   write(path.join(data, 'music.json'), mem.list('music.json').slice(0, 60));
+  write(path.join(data, 'stories.json'), mem.list('stories.json').slice(0, 60));
+  write(path.join(data, 'books.json'), mem.list('books.json').slice(0, 30).map(({ title, author, date, thought }) => ({ title, author, date, thought })));
   write(path.join(data, 'wishes.json'), mem.list('wishes.json').slice(0, 30).map(({ text, why, status, created }) => ({ text, why, status, created })));
   write(path.join(data, 'products.json'), mem.list('products.json').slice(0, 60).map(({ title, description, status, url, price, type, created, preview }) => ({ title, description, status, url, price, type, created, preview })));
   // copy new gallery images

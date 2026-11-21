@@ -1,15 +1,16 @@
 // Sends the messages Loki queued during his session — run after his work is published.
 import fs from 'node:fs';
-import { sendNow } from './gifts.js';
+import { sendNow, announceNow } from './gifts.js';
 
 const file = `${process.env.RUNNER_TEMP || '.'}/loki-outbox.jsonl`;
 if (fs.existsSync(file)) {
   const lines = fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean);
   for (const line of lines) {
     try {
-      const { title, body } = JSON.parse(line);
-      await sendNow(title, body);
-      console.log(`sent: ${title}`);
+      const m = JSON.parse(line);
+      if (m.type === 'announce') await announceNow(m.items);
+      else await sendNow(m.title, m.body, m.go);
+      console.log(`sent: ${m.title || 'what Loki made'}`);
     } catch (e) {
       console.warn('could not send:', e.message);
     }
