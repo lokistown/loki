@@ -22,6 +22,7 @@ export const ACTIONS = {
   decorate: 'Add something new to your town that is not a building: a statue, a mural of your art on a wall, plants, benches, lamps, or anything you design yourself.',
   business_idea: 'Think of a way to earn money from your creations (new shop, new product line, YouTube, commissions...) and what you need for it.',
   make_game: 'Design and code a small, fun, original browser game (it gets its own GitHub repo and appears in your arcade). Takes effort; do it when you feel creative.',
+  update_website: 'Design, code and improve YOUR OWN website (lokistown.github.io/home/) that shows off and sells your art, products, games and music. Do it when you have new things to show.',
   make_wish: 'Ask your human for something real they could give you (a tool, an API key, a promotion, uploading a product, a new feature). Max 3 open wishes.',
   rest: 'Have a short nap, stretch, or just look around (use rarely).',
 };
@@ -232,7 +233,7 @@ Reply as JSON: {"type": "art_pack|template", "title": "product title", "descript
       fs.writeFileSync(path.join(dir, 'index.html'), `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:system-ui;background:#fff8ec;color:#3b2416;max-width:900px;margin:auto;padding:20px}img{width:180px;image-rendering:pixelated;border:3px solid #3b2416;border-radius:12px;margin:6px}</style><h1>${title}</h1><p>${(r.description || '').replace(/</g, '&lt;')}</p>${items.map((f) => `<img src="../../gallery/${f}" alt="">`).join('')}<p><a href="../../">← Loki's Town</a></p>`);
     }
     product.preview = `products/${slug}/`;
-    await notifyOwner(`Loki made "${title}" - please list it`, `I finished a product and checked it myself.\n\nTitle: ${title}\nPrice: $${product.price}\nDescription: ${product.description}\nTags: ${product.tags.join(', ')}\n\nPreview: https://lokistown.github.io/products/${slug}/\nFile: https://github.com/lokistown/loki-memory/blob/main/${product.file}\n\nWhen it is on Gumroad, reply here with "Listed: ${title} <link>" so I can show it in my shop.`);
+    await notifyOwner(`Loki made "${title}" - please list it`, `I finished a product and checked it myself.\n\nTitle: ${title}\nPrice: $${product.price}\nDescription: ${product.description}\nTags: ${product.tags.join(', ')}\n\nPreview: https://lokistown.github.io/products/${slug}/\nFile: https://github.com/lokistown/loki-memory/blob/main/${product.file}\n\nWhen it is on Gumroad, reply here with: Listed: ${title} followed by the Gumroad link (for example: Listed: ${title} https://lokistown.gumroad.com/l/xyz) so I can show it in my shop.`);
     mem.saveList('products.json', products, 300);
     mem.addDiary(now.date, now.time, `Made something to sell: ${title}`, r.diary || `I packed up "${title}" for my shop.`, { type: 'url', url: `products/${slug}/` });
     return { title, summary: `prepared "${title}" for the shop`, xp: 15, location: 'workshop' };
@@ -348,6 +349,47 @@ Reply as JSON: {"title": "game title", "description": "2 sentences", "howto": "c
     mem.saveList('games.json', games, 200);
     mem.addDiary(now.date, now.time, `New game: ${title}`, r.diary || `I made a game called ${title}!`, { type: 'url', url: `games/${slug}/` });
     return { title, summary: `made a game called "${title}"${repo ? ' and published it on GitHub' : ''}`, xp: 20, location: 'workshop' };
+  },
+
+  async update_website(ctx, choice) {
+    const { brain, mem, system, now } = ctx;
+    const base = 'https://lokistown.github.io';
+    const gallery = mem.list('gallery.json').slice(0, 24);
+    const products = mem.list('products.json').filter((p) => p.status !== 'needs_work').slice(0, 12);
+    const games = mem.list('games.json').slice(0, 12);
+    const songs = mem.list('music.json').slice(0, 8);
+    const diary = mem.diaryEntries(5);
+    const resources = mem.list('resources.json');
+    const site = mem.readJson('website.json', { version: 0, notes: '' });
+    const r = await brain.ask(
+      system,
+      `[[WEBSITE]] You decided: "${choice.plan}". You are designing and coding YOUR OWN personal website (version ${site.version + 1}${site.notes ? `; last time you noted: ${site.notes}` : ''}).
+It lives at ${base}/home/ and must make people want to buy your things and visit your town. Use ONLY these real links (never invent URLs):
+- Your 3D town: ${base}/
+- Shops: https://ko-fi.com/lokistown (tips & shop), https://lokistown.gumroad.com (digital products)
+- Your portrait: ${base}/assets/loki-avatar.png
+- Pictures (use as <img>, keep pixel art crisp with image-rendering: pixelated): ${gallery.map((g) => `${base}/gallery/${encodeURIComponent(g.file)} "${g.title}"`).join(' | ') || 'none yet'}
+- Products: ${products.map((p) => `"${p.title}" $${p.price} ${p.url ? 'buy: ' + p.url : ''} ${p.preview ? 'preview: ' + base + '/' + p.preview : ''}`).join(' | ') || 'none yet'}
+- Games: ${games.map((g) => `"${g.title}" play: ${g.url}`).join(' | ') || 'none yet'}
+- Songs: ${songs.map((s) => s.title).join(', ') || 'none yet'} (they can be played in your town's book)
+- Other places your human set up for you: ${resources.filter((x) => x.url).map((x) => `${x.name}: ${x.url}`).join(' | ') || 'none yet'}
+- Latest diary: ${diary.map((d) => `${d.date} ${d.title}`).join('; ')}
+Make it a complete, beautiful, responsive single-file page in your own style (header with your portrait, about you and Pip, shop section, gallery grid, games, latest news, links, footer).
+Inline CSS (and tiny JS only if needed), no external files except the image links above. Write it as yourself.
+Reply as JSON: {"html": "<!doctype html>... complete page", "notes": "one line about what to improve next time", "diary": "one sentence"}`,
+      { json: true, quality: 'high' },
+    );
+    const html = String(r.html || '');
+    if (html.length < 3000) throw new Error('Website came out too small');
+    const checked = await reviewAndFix(ctx, html, 'personal website');
+    if (!checked.ok) throw new Error(`My website failed my own quality check: ${checked.log.slice(0, 2).join('; ')}`);
+    if (ctx.site) {
+      fs.mkdirSync(path.join(ctx.site, 'home'), { recursive: true });
+      fs.writeFileSync(path.join(ctx.site, 'home', 'index.html'), checked.html);
+    }
+    mem.writeJson('website.json', { version: site.version + 1, notes: clip(r.notes || '', 200), updated: now.date });
+    mem.addDiary(now.date, now.time, 'I updated my website', r.diary || 'I gave my website a makeover.', { type: 'url', url: 'home/' });
+    return { title: 'my website', summary: `rebuilt his own website (version ${site.version + 1})`, xp: 14, location: 'control' };
   },
 
   async make_wish({ brain, mem, system, now }, choice) {

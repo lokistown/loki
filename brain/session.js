@@ -68,7 +68,7 @@ async function decide(ctx, done) {
     system,
     `[[DECIDE]] It is ${timeOfDay(now.hour)} (${now.time}, ${now.date}, UK).
 Already done this session: ${done.join('; ') || 'nothing yet'}.
-Lifetime counts: ${JSON.stringify(counts)}. Pictures: ${gallery}. Songs: ${mem.list('music.json').length}. Products ready to sell: ${products.filter((p) => p.status === 'ready').length}, listed: ${products.filter((p) => p.status === 'listed').length}, needing work (remake them better!): ${products.filter((p) => p.status === 'needs_work').map((p) => p.title).join(', ') || 'none'}. Open wishes: ${wishes}.
+Lifetime counts: ${JSON.stringify(counts)}. Pictures: ${gallery}. Songs: ${mem.list('music.json').length}. Products ready to sell: ${products.filter((p) => p.status === 'ready').length}, listed: ${products.filter((p) => p.status === 'listed').length}, needing work (remake them better!): ${products.filter((p) => p.status === 'needs_work').map((p) => p.title).join(', ') || 'none'}. Open wishes: ${wishes}. Your own website: ${(() => { const w = mem.readJson('website.json', { version: 0 }); return w.version ? `version ${w.version}, last updated ${w.updated}` : 'you do NOT have one yet (update_website builds it)'; })()}.
 
 Recent diary:
 ${diary}

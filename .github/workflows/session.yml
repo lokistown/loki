@@ -86,3 +86,12 @@ jobs:
           if ! git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
             git tag "$TAG" && git push -q origin "$TAG" && echo "Snapshot $TAG saved"
           fi
+
+      # Loki's messages go out last, once his new pages are live (Pages needs ~1 minute to publish).
+      - name: Send Loki's messages
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.LOKI_PAT }}
+          LOKI_NTFY_TOPIC: ${{ secrets.LOKI_NTFY_TOPIC }}
+        run: |
+          if [ -s "$RUNNER_TEMP/loki-outbox.jsonl" ]; then sleep 90; node loki/brain/flush-notify.js; else echo "nothing to send"; fi

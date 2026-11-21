@@ -45,8 +45,18 @@ export async function fetchGifts() {
   return out;
 }
 
-// Loki asks his human for something: a GitHub issue (GitHub emails the owner about it).
+// Loki tells his human something. During a GitHub work session the message is queued and sent
+// at the very end (brain/flush-notify.js), after his work has been published, so every link works.
 export async function notifyOwner(title, body) {
+  if (process.env.RUNNER_TEMP && !process.env.LOKI_SEND_NOW) {
+    const fs = await import('node:fs');
+    fs.appendFileSync(`${process.env.RUNNER_TEMP}/loki-outbox.jsonl`, JSON.stringify({ title, body }) + '\n');
+    return true;
+  }
+  return sendNow(title, body);
+}
+
+export async function sendNow(title, body) {
   // phone push via ntfy.sh (free, no account): install the ntfy app and subscribe to your private topic
   const topic = process.env.LOKI_NTFY_TOPIC;
   if (topic) {
