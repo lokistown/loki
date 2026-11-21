@@ -177,7 +177,7 @@ Reply as JSON: {"title": "song title", "mood": "one or two words", "bpm": 70-150
 Unused pictures: ${fresh.slice(0, 20).map((g, i) => `${i}: ${g.title}`).join('; ') || 'none'}.
 Choose ONE product to prepare for sale:
 - "art_pack": a themed pack of 4-10 of your unused pictures (only if you have at least 4 unused), or
-- "template": a small, beautiful single-file HTML landing-page template (no external scripts, inline CSS only).
+- "template": a beautiful, COMPLETE single-file HTML landing-page template worth paying for: hero, features, gallery/cards, testimonials, pricing or contact, footer; responsive; inline CSS only; no external files; at least 6 KB of real content.
 Reply as JSON: {"type": "art_pack|template", "title": "product title", "description": "2-3 sentence shop description",
 "price": "suggested price in USD like 3", "tags": ["tag"], "picks": [0, 1, 2, 3],
 "html": "full HTML for template, else empty", "diary": "one sentence"}`,
@@ -198,7 +198,7 @@ Reply as JSON: {"type": "art_pack|template", "title": "product title", "descript
       items = picks.map((g) => g.file);
     } else {
       let html = String(r.html || '');
-      if (html.length < 400) throw new Error('Template came out unusable');
+      if (html.length < 4000) throw new Error('Template too small to sell - I want to make it richer');
       const checked = await reviewAndFix(ctx, html, 'website template for sale');
       if (!checked.ok) throw new Error(`Template failed my own quality check: ${checked.log.slice(0, 2).join('; ')}`);
       html = checked.html;
@@ -232,6 +232,7 @@ Reply as JSON: {"type": "art_pack|template", "title": "product title", "descript
       fs.writeFileSync(path.join(dir, 'index.html'), `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:system-ui;background:#fff8ec;color:#3b2416;max-width:900px;margin:auto;padding:20px}img{width:180px;image-rendering:pixelated;border:3px solid #3b2416;border-radius:12px;margin:6px}</style><h1>${title}</h1><p>${(r.description || '').replace(/</g, '&lt;')}</p>${items.map((f) => `<img src="../../gallery/${f}" alt="">`).join('')}<p><a href="../../">← Loki's Town</a></p>`);
     }
     product.preview = `products/${slug}/`;
+    await notifyOwner(`Loki made "${title}" - please list it`, `I finished a product and checked it myself.\n\nTitle: ${title}\nPrice: $${product.price}\nDescription: ${product.description}\nTags: ${product.tags.join(', ')}\n\nPreview: https://lokistown.github.io/products/${slug}/\nFile: https://github.com/lokistown/loki-memory/blob/main/${product.file}\n\nWhen it is on Gumroad, reply here with "Listed: ${title} <link>" so I can show it in my shop.`);
     mem.saveList('products.json', products, 300);
     mem.addDiary(now.date, now.time, `Made something to sell: ${title}`, r.diary || `I packed up "${title}" for my shop.`, { type: 'url', url: `products/${slug}/` });
     return { title, summary: `prepared "${title}" for the shop`, xp: 15, location: 'workshop' };

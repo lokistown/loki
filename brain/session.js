@@ -54,7 +54,7 @@ async function decide(ctx, done) {
     system,
     `[[DECIDE]] It is ${timeOfDay(now.hour)} (${now.time}, ${now.date}, UK).
 Already done this session: ${done.join('; ') || 'nothing yet'}.
-Lifetime counts: ${JSON.stringify(counts)}. Pictures: ${gallery}. Songs: ${mem.list('music.json').length}. Products ready to sell: ${products.filter((p) => p.status === 'ready').length}, listed: ${products.filter((p) => p.status === 'listed').length}. Open wishes: ${wishes}.
+Lifetime counts: ${JSON.stringify(counts)}. Pictures: ${gallery}. Songs: ${mem.list('music.json').length}. Products ready to sell: ${products.filter((p) => p.status === 'ready').length}, listed: ${products.filter((p) => p.status === 'listed').length}, needing work (remake them better!): ${products.filter((p) => p.status === 'needs_work').map((p) => p.title).join(', ') || 'none'}. Open wishes: ${wishes}.
 
 Recent diary:
 ${diary}
@@ -96,6 +96,18 @@ Reply as JSON: {"reply": "...", "diary": "...", "granted": ${wish ? 'true if thi
     }
     await answerGift(g.number, clip(r.reply || 'Thank you!', 500));
     log.unshift({ date: now.date, title: g.title, wish: wish?.text || null, reply: clip(r.reply, 500) });
+    // "Listed: <title> <url>" marks a product as on sale
+    const listed = `${g.title}\n${g.body}`.match(/listed[:\s]+(.+?)\s+(https?:\/\/\S+)/i);
+    if (listed) {
+      const products = mem.list('products.json');
+      const want = listed[1].toLowerCase().replace(/[^a-z0-9 ]/g, '');
+      const prod = products.find((p) => want.includes(p.title.toLowerCase().replace(/[^a-z0-9 ]/g, '').slice(0, 20)));
+      if (prod) {
+        prod.status = 'listed';
+        prod.url = listed[2];
+        mem.saveList('products.json', products, 300);
+      }
+    }
     // money your human reports ("Sale: $5 for the art pack") goes into Loki's wallet
     const money = `${g.title} ${g.body}`.match(/(sale|sold|income|earned|tip)[^$€£\d]{0,40}[$€£]\s?(\d+(?:\.\d{1,2})?)/i);
     if (money) {
