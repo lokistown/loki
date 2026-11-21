@@ -27,7 +27,16 @@ const siteDir = arg('site', null);
 const mock = flag('mock');
 const soul = fs.readFileSync(path.join(here, '..', 'soul.md'), 'utf8');
 
-function buildSystem(state, town) {
+export function availableTools() {
+  const t = ['Gemini (thinking)'];
+  if (process.env.GROQ_API_KEY) t.push('Groq (backup brain)');
+  if (process.env.OPENROUTER_API_KEY) t.push('OpenRouter (backup brain)');
+  if (process.env.GH_TOKEN) t.push('GitHub (publish repos, talk to your human)');
+  if (process.env.LOKI_WORKER_URL) t.push('mailbox + shop sales');
+  if (process.env.LOKI_NTFY_TOPIC) t.push('phone notifications to your human');
+  return t;
+}
+function buildSystem(state, town, mem) {
   const n = state.needs;
   return `${soul}
 
@@ -36,6 +45,11 @@ function buildSystem(state, town) {
 - Needs (0-100): fullness ${n.fullness}, energy ${n.energy}, joy ${n.joy}, curiosity ${n.curiosity}, calm ${n.calm}.
 - Your friend Pip (a tiny grey mouse) rides on your head and goes everywhere with you.
 - Skills: ${state.skills.map((s) => s.name).join(', ') || 'none yet'}.
+
+## What your human has given you (use these in your plans!)
+${(mem.list('resources.json').map((r) => `- ${r.name} (${r.type})${r.url ? ': ' + r.url : ''}${r.notes ? ' — ' + r.notes : ''}`).join('\n')) || '- nothing yet (you can wish for accounts or tools)'}
+Tools you can use right now: ${availableTools().join(', ')}.
+You cannot log in anywhere yourself: for accounts, you prepare the content (posts, listings, video plans) and ask your human to publish it.
 
 ## Your town (you know it better than anyone)
 ${mapText(town)}
@@ -108,6 +122,16 @@ Reply as JSON: {"reply": "...", "diary": "...", "granted": ${wish ? 'true if thi
         mem.saveList('products.json', products, 300);
       }
     }
+    // "resource: {...}" from the Control Centre toolbox: an account, budget, topic... Loki remembers it
+    const res = `${g.body}`.match(/resource:\s*(\{[^\n]*\})/);
+    if (res) {
+      try {
+        const r = JSON.parse(res[1]);
+        const resources = mem.list('resources.json').filter((x) => (x.name || '').toLowerCase() !== String(r.name || '').toLowerCase());
+        resources.unshift({ type: clip(r.type || 'other', 20), name: clip(r.name || 'something', 60), url: clip(r.url || '', 200), notes: clip(r.notes || '', 200), date: now.date });
+        mem.saveList('resources.json', resources, 200);
+      } catch {}
+    }
     // money your human reports ("Sale: $5 for the art pack") goes into Loki's wallet
     const money = `${g.title} ${g.body}`.match(/(sale|sold|income|earned|tip)[^$€£\d]{0,40}[$€£]\s?(\d+(?:\.\d{1,2})?)/i);
     if (money) {
@@ -140,7 +164,7 @@ async function main() {
   const now = ukNow();
   const hoursSince = state.updated ? (Date.now() - new Date(state.updated)) / 3600000 : 0;
   driftNeeds(state, hoursSince);
-  const ctx = { brain, mem, state, town, now, site: siteDir, system: buildSystem(state, town) };
+  const ctx = { brain, mem, state, town, now, site: siteDir, system: buildSystem(state, town, mem) };
   const publish = (extra = {}) => {
     publishSite(siteDir, mem, state, extra);
     writeControl(siteDir, mem, state, { providers: brain.log });

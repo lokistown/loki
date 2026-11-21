@@ -18,6 +18,8 @@ export function writeControl(siteDir, mem, state, extra = {}) {
     visitors: mem.readJson('visitors.json', {}),
     ledger: mem.list('ledger.json'),
     business: mem.list('business.json'),
+    resources: mem.list('resources.json'),
+    tools: ['GROQ_API_KEY', 'OPENROUTER_API_KEY', 'HF_TOKEN', 'ELEVENLABS_API_KEY'].filter((k) => process.env[k]),
     props: (mem.loadTown().props || []).slice(-50),
     diary: mem.diaryEntries(30),
     providers: extra.providers || [],
