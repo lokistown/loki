@@ -76,7 +76,8 @@ export default {
 
       // ---------- Loki's brain only ----------
       if (p.startsWith('/admin/')) {
-        if (!env.ADMIN_TOKEN || req.headers.get('authorization') !== `Bearer ${env.ADMIN_TOKEN}`) return json(req, { error: 'no' }, 401);
+        const given = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+        if (!env.ADMIN_TOKEN || !given || given !== String(env.ADMIN_TOKEN).trim()) return json(req, { error: "no" }, 401);
         if (p === '/admin/pending') {
           const limit = Math.min(30, Number(url.searchParams.get('limit')) || 15);
           const { results } = await env.DB.prepare("SELECT id, visitor_id, nick, text, has_image, created FROM offerings WHERE status = 'pending' ORDER BY created ASC LIMIT ?").bind(limit).all();

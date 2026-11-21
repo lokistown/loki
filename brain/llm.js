@@ -24,9 +24,9 @@ async function http(url, options = {}, timeoutMs = 90_000) {
 }
 
 // ---------- Gemini ----------
-async function geminiModel(key, preferred) {
-  if (preferred) return preferred;
-  if (resolvedModels.gemini) return resolvedModels.gemini;
+// All usable "flash" models, best first. If one is overloaded we try the next.
+async function geminiModels(key, preferred) {
+  if (resolvedModels.geminiList) return resolvedModels.geminiList;
   // Discover the best live "flash" model so we survive model retirements.
   const data = await http(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200`, { headers: { "x-goog-api-key": key } });
   const names = (data.models || [])
@@ -42,26 +42,40 @@ async function geminiModel(key, preferred) {
     return s;
   };
   names.sort((a, b) => score(b) - score(a));
-  if (!names.length) throw new Error('No Gemini flash model available');
-  resolvedModels.gemini = names[0];
-  return names[0];
+  const list = [...new Set([preferred, ...names].filter(Boolean))];
+  if (!list.length) throw new Error('No Gemini flash model available');
+  resolvedModels.geminiList = list.slice(0, 6);
+  console.log(`Gemini models to try: ${resolvedModels.geminiList.join(', ')}`);
+  return resolvedModels.geminiList;
 }
+const geminiBad = new Set(); // models that failed this session
 
 async function callGemini(key, model, system, user, json) {
-  const m = await geminiModel(key, model);
+  const models = (await geminiModels(key, model)).filter((m) => !geminiBad.has(m));
   const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [{ text: user }] }],
     generationConfig: { temperature: 0.9, maxOutputTokens: 8192, ...(json ? { responseMimeType: 'application/json' } : {}) },
   };
-  const data = await http(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify(body),
-  });
-  const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
-  if (!text) throw new Error('Gemini returned empty response');
-  return { text, model: m };
+  let last;
+  for (const m of models) {
+    try {
+      const data = await http(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify(body),
+      });
+      const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
+      if (!text) throw new Error('Gemini returned empty response');
+      return { text, model: m };
+    } catch (e) {
+      last = e;
+      if (e.status === 401 || e.status === 403) throw e; // bad key: no point trying other models
+      console.warn(`gemini ${m} failed (${e.status || e.message}), trying next model`);
+      if (e.status === 404 || e.status === 429 || e.status === 503 || e.name === 'AbortError') geminiBad.add(m);
+    }
+  }
+  throw last || new Error('No Gemini model worked');
 }
 
 // ---------- OpenAI-compatible (Groq, OpenRouter) ----------

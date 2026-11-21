@@ -20,25 +20,25 @@ jobs:
     timeout-minutes: 50
     steps:
       - name: Checkout brain
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: loki
 
       - name: Checkout memory
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: lokistown/loki-memory
           token: ${{ secrets.LOKI_PAT }}
           path: loki-memory
 
       - name: Checkout website
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: lokistown/lokistown.github.io
           token: ${{ secrets.LOKI_PAT }}
           path: site
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
 
