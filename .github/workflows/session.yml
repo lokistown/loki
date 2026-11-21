@@ -47,6 +47,10 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GH_TOKEN: ${{ secrets.LOKI_PAT }}
+          LOKI_ADMIN_PASSWORD: ${{ secrets.LOKI_ADMIN_PASSWORD }}
+          LOKI_WORKER_URL: ${{ vars.LOKI_WORKER_URL }}
+          LOKI_WORKER_SECRET: ${{ secrets.LOKI_WORKER_SECRET }}
         run: node loki/brain/session.js --memory loki-memory --site site
 
       # Runs even if the session crashed half-way, so every finished task is saved.

@@ -12,15 +12,14 @@ function write(file, data) {
 export function publishSite(siteDir, mem, state, extra = {}) {
   if (!siteDir) return;
   const data = path.join(siteDir, 'data');
-  const { xp, level, stage, mood, location, activity, thought, sessions, tasksDone, skills, born } = state;
-  const nextLevelXp = (level) ** 2 * 10;
+  const { xp, level, stage, mood, location, activity, thought, sessions, tasksDone, skills, born, needs, pip, schedule, whatsOn, recent } = state;
   write(path.join(data, 'state.json'), {
     name: 'Loki',
     born,
     xp,
     level,
     stage,
-    nextLevelXp,
+    nextLevelXp: level ** 2 * 10,
     mood,
     location,
     activity,
@@ -28,11 +27,25 @@ export function publishSite(siteDir, mem, state, extra = {}) {
     asleep: !!extra.asleep,
     sessions,
     tasksDone,
-    skills: skills.map((s) => ({ name: s.name, learned: s.learned })),
+    needs,
+    pip,
+    schedule,
+    whatsOn,
+    recent,
+    skills: (skills || []).map((s) => ({ name: s.name, learned: s.learned })),
     updated: new Date().toISOString(),
-    recent: extra.recent || [],
   });
   write(path.join(data, 'town.json'), mem.loadTown());
   write(path.join(data, 'diary.json'), mem.diaryEntries(40));
-  write(path.join(data, 'gallery.json'), mem.readJson('gallery.json', []).slice(0, 120));
+  write(path.join(data, 'gallery.json'), mem.list('gallery.json').slice(0, 120));
+  write(path.join(data, 'music.json'), mem.list('music.json').slice(0, 60));
+  write(path.join(data, 'wishes.json'), mem.list('wishes.json').slice(0, 30).map(({ text, why, status, created }) => ({ text, why, status, created })));
+  write(path.join(data, 'products.json'), mem.list('products.json').slice(0, 60).map(({ title, description, status, url, price, type, created }) => ({ title, description, status, url, price, type, created })));
+  // copy new gallery images
+  const artDir = mem.p('art');
+  const galDir = path.join(siteDir, 'gallery');
+  if (fs.existsSync(artDir)) {
+    fs.mkdirSync(galDir, { recursive: true });
+    for (const f of fs.readdirSync(artDir)) if (!fs.existsSync(path.join(galDir, f))) fs.copyFileSync(path.join(artDir, f), path.join(galDir, f));
+  }
 }

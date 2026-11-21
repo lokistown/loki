@@ -3,12 +3,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
 import { slugify, clip, safeColor, cleanPixelSvg } from './util.js';
+import { ADDABLE_ROOMS } from './config.js';
+import { makeZip } from './zip.js';
 
 export const ACTIONS = {
   write_diary: 'Write a diary entry about your day, a feeling, a visitor or an idea.',
   improve_town: 'Improve an existing building in your town or build a new one.',
   make_art: 'Make a new pixel-art picture for your gallery (cats, town life, objects, moods).',
   learn_skill: 'Learn a new skill and write yourself a short how-to guide for it.',
+  make_music: 'Compose a short song in your music room (you are learning to sing and play piano).',
+  make_product: 'Prepare something to SELL in your shop (an art pack from your gallery, or a small website template). Your human lists it for sale.',
+  make_wish: 'Ask your human for something real they could give you (a tool, an API key, a promotion, uploading a product, a new feature). Max 3 open wishes.',
   rest: 'Have a short nap, stretch, or just look around (use rarely).',
 };
 
@@ -40,11 +45,11 @@ Reply as JSON: {"title": "short title", "text": "the entry"}`,
       system,
       `[[TOWN]] Your town right now:\n${list}\n
 You decided: "${choice.plan}".
-Either upgrade one existing building (give its id) ${canBuild ? 'or build something new (target "new")' : '(the town is full, so upgrade one)'}.
+Either upgrade one existing building (give its id), add a new ROOM to a building that has rooms (set "add_room" to one of: ${ADDABLE_ROOMS.join(', ')}) ${canBuild ? 'or build something new (target "new")' : '(the town is full, so upgrade or add a room)'}.
 Building kinds: ${BUILDING_KINDS.join(', ')}. Your town is a 3D town that visitors walk around, so think about what would make it a lovely place to explore (shops, parks, cafes, places to show your art and sell your things).
 Levels go 1-5: each level makes a building bigger and fancier.
 Reply as JSON: {"target": "<id or new>", "name": "name", "kind": "<kind>", "color": "#rrggbb main colour",
-"description": "how it looks now (max 25 words)", "diary": "one or two sentences about doing it, in your voice"}`,
+"description": "how it looks now (max 25 words)", "add_room": "optional room kind", "room_name": "optional fun room name", "diary": "one or two sentences about doing it, in your voice"}`,
       { json: true },
     );
     let b = town.buildings.find((x) => x.id === r.target);
@@ -58,6 +63,10 @@ Reply as JSON: {"target": "<id or new>", "name": "name", "kind": "<kind>", "colo
       b = { id: uniqueId, name: clip(r.name || 'New building', 40), kind: BUILDING_KINDS.includes(r.kind) ? r.kind : 'other', level: 1, plot, built: now.date };
       town.buildings.push(b);
       summary = `built a new ${b.name}`;
+    } else if (b && r.add_room && ADDABLE_ROOMS.includes(r.add_room) && Array.isArray(b.rooms) && b.rooms.length < 12) {
+      const room = { id: `${b.id}-${b.rooms.length}`, kind: r.add_room, name: clip(r.room_name || '', 30) || undefined, built: now.date };
+      b.rooms.push(room);
+      summary = `added a ${room.name || r.add_room.replace('_', ' ')} to ${b.name}`;
     } else {
       b = b || town.buildings[Math.floor(Math.random() * town.buildings.length)];
       b.level = Math.min(5, (b.level || 1) + 1);
@@ -118,6 +127,108 @@ Reply as JSON: {"name": "skill name", "why": "why it helps you", "steps": ["step
     state.skills.push({ slug, name, learned: now.date });
     mem.addDiary(now.date, now.time, `Learned: ${name}`, r.why || `I learned ${name}.`);
     return { title: name, summary: `learned a new skill: ${name}`, xp: 8, location: 'workshop' };
+  },
+
+  async make_music({ brain, mem, system, now }, choice) {
+    const songs = mem.list('music.json');
+    const r = await brain.ask(
+      system,
+      `[[MUSIC]] You decided: "${choice.plan}". You've written ${songs.length} songs so far${songs[0] ? ` (latest: "${songs[0].title}")` : ''}.
+Compose a short, catchy, ORIGINAL melody (never copy existing songs) as MIDI note numbers (60 = middle C) with lengths in beats.
+24-48 melody notes; optionally a simple bass line (12-24 notes, 36-55). Use null as the note for a rest.
+Reply as JSON: {"title": "song title", "mood": "one or two words", "bpm": 70-150, "wave": "triangle|sine|square",
+"notes": [[64, 1], [67, 0.5], [null, 0.5]], "bass": [[48, 2]], "diary": "one or two sentences about writing it"}`,
+      { json: true },
+    );
+    const clean = (arr, lo, hi, max) =>
+      (Array.isArray(arr) ? arr : []).slice(0, max).map((n) => {
+        const [m, b] = Array.isArray(n) ? n : [n?.note, n?.beats];
+        const beats = Math.max(0.25, Math.min(4, Number(b) || 1));
+        return [m !== null && Number.isFinite(Number(m)) ? Math.max(lo, Math.min(hi, Math.round(Number(m)))) : null, beats];
+      });
+    const notes = clean(r.notes, 48, 96, 64);
+    if (notes.filter((n) => n[0] !== null).length < 8) throw new Error('Song came out too short');
+    const title = clip(r.title || 'Untitled tune', 60);
+    songs.unshift({ title, mood: clip(r.mood || '', 30), bpm: Math.max(60, Math.min(160, Number(r.bpm) || 100)), wave: ['triangle', 'sine', 'square'].includes(r.wave) ? r.wave : 'triangle', notes, bass: clean(r.bass, 28, 60, 32), date: now.date });
+    mem.saveList('music.json', songs, 200);
+    mem.addDiary(now.date, now.time, `New song: ${title}`, r.diary || `I wrote a song called ${title}.`);
+    return { title, summary: `wrote a song called "${title}"`, xp: 12, location: 'house' };
+  },
+
+  async make_product({ brain, mem, system, now }, choice) {
+    const gallery = mem.list('gallery.json');
+    const products = mem.list('products.json');
+    const used = new Set(products.flatMap((p) => p.items || []));
+    const fresh = gallery.filter((g) => !used.has(g.file));
+    const r = await brain.ask(
+      system,
+      `[[PRODUCT]] You decided: "${choice.plan}". You have ${gallery.length} pictures (${fresh.length} not yet in any product) and ${products.length} products.
+Unused pictures: ${fresh.slice(0, 20).map((g, i) => `${i}: ${g.title}`).join('; ') || 'none'}.
+Choose ONE product to prepare for sale:
+- "art_pack": a themed pack of 4-10 of your unused pictures (only if you have at least 4 unused), or
+- "template": a small, beautiful single-file HTML landing-page template (no external scripts, inline CSS only).
+Reply as JSON: {"type": "art_pack|template", "title": "product title", "description": "2-3 sentence shop description",
+"price": "suggested price in USD like 3", "tags": ["tag"], "picks": [0, 1, 2, 3],
+"html": "full HTML for template, else empty", "diary": "one sentence"}`,
+      { json: true },
+    );
+    const title = clip(r.title || 'Something from Loki', 60);
+    let slug = `${now.date}-${slugify(title, 30)}`;
+    if (products.some((p) => p.id === slug)) slug += `-${Date.now().toString(36).slice(-4)}`;
+    const files = [];
+    let items = [];
+    if (r.type === 'art_pack') {
+      const picks = (Array.isArray(r.picks) ? r.picks : []).map((i) => fresh[Number(i)]).filter(Boolean).slice(0, 10);
+      if (picks.length < 4) throw new Error('Not enough unused pictures for an art pack yet');
+      for (const g of picks) {
+        const f = mem.p('art', g.file);
+        if (fs.existsSync(f)) files.push({ name: `art/${g.file}`, data: fs.readFileSync(f) });
+      }
+      items = picks.map((g) => g.file);
+    } else {
+      const html = String(r.html || '');
+      if (html.length < 400 || /<script[^>]+src=|<iframe|javascript:/i.test(html)) throw new Error('Template came out unusable');
+      files.push({ name: 'index.html', data: html.slice(0, 60000) });
+    }
+    files.push({ name: 'README.txt', data: `${title}\n\n${r.description || ''}\n\nMade by Loki the cat (lokistown.github.io). Personal and commercial use allowed; please do not resell the files themselves.\n` });
+    const dir = mem.p('products', slug);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${slug}.zip`), makeZip(files));
+    const product = {
+      id: slug,
+      type: r.type === 'art_pack' ? 'art_pack' : 'template',
+      title,
+      description: clip(r.description || '', 600),
+      price: String(r.price || '3').replace(/[^0-9.]/g, '') || '3',
+      tags: (Array.isArray(r.tags) ? r.tags : []).slice(0, 8).map((t) => clip(t, 24)),
+      items,
+      file: `products/${slug}/${slug}.zip`,
+      status: 'ready',
+      created: now.date,
+    };
+    products.unshift(product);
+    mem.saveList('products.json', products, 300);
+    mem.addDiary(now.date, now.time, `Made something to sell: ${title}`, r.diary || `I packed up "${title}" for my shop.`);
+    return { title, summary: `prepared "${title}" for the shop`, xp: 15, location: 'workshop' };
+  },
+
+  async make_wish({ brain, mem, system, now }, choice) {
+    const wishes = mem.list('wishes.json');
+    const open = wishes.filter((w) => w.status === 'open');
+    if (open.length >= 3) return { title: 'patience', summary: 'remembered he already has 3 wishes waiting, and waited patiently', xp: 1 };
+    const r = await brain.ask(
+      system,
+      `[[WISH]] You decided: "${choice.plan}". Your open wishes: ${open.map((w) => w.text).join('; ') || 'none'}. Granted before: ${wishes.filter((w) => w.status === 'granted').map((w) => w.text).slice(0, 5).join('; ') || 'none'}.
+Ask your human for ONE realistic thing they can actually give you online: e.g. a free API key for image making, sharing your town on social media,
+listing your ready products for sale, a new tool or feature for your town, a book or topic to learn, feedback on your art.
+Reply as JSON: {"text": "the wish, one sentence, addressed to your human", "why": "why it would help you", "kind": "key|promote|upload|feature|learn|other"}`,
+      { json: true },
+    );
+    const wish = { id: `w${Date.now().toString(36)}`, text: clip(r.text, 200), why: clip(r.why || '', 240), kind: r.kind || 'other', status: 'open', created: now.date };
+    wishes.unshift(wish);
+    mem.saveList('wishes.json', wishes, 200);
+    mem.addDiary(now.date, now.time, 'A wish', `${wish.text} ${wish.why}`);
+    return { title: wish.text, summary: `made a wish: ${wish.text}`, xp: 3, location: 'control' };
   },
 
   async rest() {

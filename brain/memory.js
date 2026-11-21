@@ -3,6 +3,7 @@
 // .bak copy of its last good version. The event log is append-only.
 import fs from 'node:fs';
 import path from 'node:path';
+import { DEFAULT_ROOMS } from './config.js';
 
 const STAGES = [
   { minLevel: 1, name: 'kitten' },
@@ -94,6 +95,11 @@ export class Memory {
       lastDreamNight: null,
       counters: {},
     });
+    s.needs ||= { fullness: 70, energy: 80, joy: 70, curiosity: 90, calm: 70 };
+    s.pip ||= { needs: { fullness: 70, energy: 80, joy: 80, curiosity: 90, calm: 60 }, status: "riding on Loki's head" };
+    s.schedule ||= [];
+    s.recent ||= [];
+    s.whatsOn ||= '';
     return s;
   }
 
@@ -127,6 +133,10 @@ export class Memory {
       b.plot = next;
       used.add(next);
       delete b.x;
+    }
+    // Enterable buildings keep an explicit list of rooms Loki can add to.
+    for (const b of town.buildings) {
+      if (!Array.isArray(b.rooms) && DEFAULT_ROOMS[b.kind]) b.rooms = DEFAULT_ROOMS[b.kind].map((kind, i) => ({ id: `${b.id}-${i}`, kind }));
     }
     return town;
   }
@@ -182,6 +192,17 @@ export class Memory {
       }
     }
     return out;
+  }
+
+  // ---- small helpers for lists kept in memory ----
+  list(name) {
+    return this.readJson(name, []);
+  }
+  saveList(name, arr, max = 500) {
+    this.writeJson(name, arr.slice(0, max));
+  }
+  addRecent(state, time, text) {
+    state.recent = [{ time, text }, ...(state.recent || [])].slice(0, 12);
   }
 
   // ---- skills ----

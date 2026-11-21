@@ -1,0 +1,13 @@
+name = "loki-mailbox"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+# Filled in after `wrangler d1 create loki-mailbox` prints the database id.
+[[d1_databases]]
+binding = "DB"
+database_name = "loki-mailbox"
+database_id = "REPLACE_WITH_DATABASE_ID"
+
+# Secrets (set with `wrangler secret put`, never committed):
+#   ADMIN_TOKEN  - shared with Loki's brain (GitHub secret LOKI_WORKER_SECRET)
+#   SALT         - any random string, used to anonymise visitor IPs

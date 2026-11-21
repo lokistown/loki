@@ -24,3 +24,25 @@ export const config = {
   maxGalleryItems: 500,
   maxBuildings: 14,
 };
+
+// ---- the map Loki knows (must match the website's rooms) ----
+export const DEFAULT_ROOMS = {
+  house: ['hall', 'living', 'kitchen', 'studio', 'music', 'bedroom', 'laundry', 'control'],
+  workshop: ['workshop', 'storage'],
+  bakery: ['bakery', 'cafe'],
+  cafe: ['cafe'],
+  gallery: ['gallery', 'gallery'],
+  library: ['library', 'library'],
+  shop: ['shop'],
+  tower: ['library'],
+  other: ['living'],
+};
+export const ENTERABLE = Object.keys(DEFAULT_ROOMS);
+export const ROOM_ACTS = {
+  hall: ['greet'], living: ['relax', 'radio'], kitchen: ['eat', 'cook'], bedroom: ['sleep', 'stretch'], laundry: ['laundry'],
+  music: ['sing', 'piano'], studio: ['paint'], control: ['work'], workshop: ['build', 'print'], storage: ['tidy'], bakery: ['bake'],
+  cafe: ['coffee', 'sit'], gallery: ['admire'], library: ['read'], shop: ['sell'], garden_room: ['garden'],
+};
+export const OUTDOOR_ACTS = { park: ['sit', 'stroll'], garden: ['garden', 'sit', 'stroll'], fountain: ['watch'], tree: ['nap'], market: ['sell'] };
+export const PLAZA_ACTS = ['stroll', 'sit', 'mail', 'write'];
+export const ADDABLE_ROOMS = ['kitchen', 'bedroom', 'laundry', 'music', 'studio', 'workshop', 'storage', 'library', 'cafe', 'gallery', 'garden_room', 'living'];
