@@ -10,7 +10,7 @@ function mockArt() {
 export function mockReply(user) {
   const J = JSON.stringify;
   if (user.includes('[[DECIDE]]')) {
-    const action = pick(['write_diary', 'improve_town', 'make_art', 'make_art', 'learn_skill', 'make_music', 'make_product', 'make_wish', 'decorate', 'decorate', 'business_idea', 'make_game', 'update_website', 'make_illustration', 'research', 'read_book', 'write_story']);
+    const action = pick(['write_diary', 'improve_town', 'make_art', 'make_art', 'learn_skill', 'make_music', 'make_product', 'make_wish', 'decorate', 'decorate', 'business_idea', 'make_game', 'update_website', 'make_illustration', 'research', 'read_book', 'write_story', 'invent']);
     return J({ thought: pick(['The bakery needs a chimney.', 'I wonder who will visit today.', 'My paws want to paint.']), mood: pick(['curious', 'cozy', 'busy', 'proud']), action, plan: `(mock) ${action}` });
   }
   if (user.includes('[[TOWN]]')) return J(pick([{ target: 'house', add_room: 'library', room_name: 'Reading Nook', diary: 'I added a reading nook.' }, { target: 'new', name: 'Sunny Park', kind: 'park', color: '#8fd16a', description: 'A park with a bench.', diary: 'I made a park.' }, { target: 'bakery', name: 'Bakery', description: 'Now with a bigger oven.', diary: 'Upgraded the bakery.' }]));
@@ -38,6 +38,8 @@ export function mockReply(user) {
   if (user.includes('[[STORY]]')) return J({ title: 'Pip and the Moon Biscuit', blurb: 'Pip finds a biscuit shaped like the moon.', cover: 'a tiny grey mouse holding a round biscuit under the moon', pages: [1, 2, 3, 4].map((i) => ({ text: `Page ${i}. Pip the little grey mouse looked up at the round moon and thought it looked just like a biscuit from the bakery, warm and golden and very hard to reach.`, picture: 'a tiny grey mouse looking at the moon from a rooftop' })), diary: 'I wrote a story about Pip.' });
   if (user.includes('[[EXPAND]]')) return J({ html: '<!doctype html><html><head><title>Big</title></head><body>' + '<section><h2>More</h2><p>Lots of real content for this page, written with care by Loki.</p></section>'.repeat(60) + '</body></html>' });
   if (user.includes('[[POST]]')) return J({ text: 'Pip and I made something new today. Come and see it in our little town! #pixelart #cozy', alt: 'A small pixel picture by Loki.' });
+  if (user.includes('[[INVENT]]')) return J({ title: 'Purr Machine', kind: 'interactive toy', pitch: 'Pat the cat and it purrs a tune.', concept: 'A big cat face; each pat plays a note.', surprise: 'Pat 10 times and Pip appears.' });
+  if (user.includes('[[INVENT2]]')) return J({ html: '<!doctype html><html><head><meta charset="utf-8"><title>Purr Machine</title></head><body><button id="b">Pat</button><script>document.getElementById("b").onclick=()=>{}</script>' + '<p>A purring toy made by Loki the cat.</p>'.repeat(80) + '<footer>Made by Loki the cat · <a href="https://lokistown.github.io/?go=made:SLUG">lokistown.github.io</a></footer></body></html>', diary: 'I invented a purring toy!' });
   if (user.includes('[[DREAM]]')) return J({ title: 'The moon fish', text: 'I dreamt the moon was a fish and I almost caught it.' });
   return J({ title: 'A mock day', text: 'Today was a pretend day. Everything worked.' });
 }

@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { slugify, clip } from './util.js';
+import { reviewAndFix } from './quality.js';
 import { illustrate, wiki, trends, findBooks, readBook, palette } from './tools.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -154,4 +155,62 @@ export async function paletteHint() {
   const mode = ['analogic', 'complement', 'triad', 'monochrome'][Math.floor(Math.random() * 4)];
   const p = await palette(base, mode);
   return p.length ? `A palette from your colour tool you may use: ${p.join(', ')}.` : '';
+}
+
+// ---------------- inventions: Loki decides WHAT to make, in any digital format ----------------
+const SEEDS = [
+  'an interactive toy (a tiny instrument, a bubble machine, a cat-pat simulator)',
+  'a generative art machine people can play with and save pictures from',
+  'a printable (colouring page, sticker sheet, bookmark set, planner page, recipe card) as SVG/HTML ready to print',
+  'a mini web app that helps with something cosy (a tea timer, a mood journal, a gift idea picker)',
+  'a choose-your-own-adventure story set in your town',
+  'a little zine or comic made in HTML/CSS/SVG',
+  'a puzzle or riddle hunt with a secret ending',
+  'a screensaver or ambient scene (rain on a window, fireflies, a night train)',
+  'a poem or haiku generator with beautiful typography',
+  'a virtual pet, a fortune cookie, a daily horoscope for cats',
+  'a font specimen, a colour palette tool, a pattern maker',
+  'something nobody has thought of yet',
+];
+export const INVENT_ACTION = {
+  invent: 'Invent and build something NEW that nobody asked for: any digital creation you can imagine (a toy, generative art, a printable, a mini app, an interactive story, a zine...). Surprise your human. It goes into Loki\'s Lab in your town.',
+};
+export async function invent(ctx, choice, design) {
+  const { brain, mem, system, site, now } = ctx;
+  const made = mem.list('made.json');
+  const idea = await brain.ask(
+    system,
+    `[[INVENT]] You decided: "${choice.plan}". You are an inventor. Think of ONE original digital creation that would delight people and that nobody asked you for.
+Things you made before (do something DIFFERENT): ${made.slice(0, 8).map((m) => `${m.title} (${m.kind})`).join('; ') || 'nothing yet'}.
+Sparks (only for inspiration, invent your own if you can): ${SEEDS.join('; ')}.
+Reply as JSON: {"title": "catchy name", "kind": "what it is in 2-4 words", "pitch": "one sentence for visitors", "concept": "how it works and what makes it special, 3-5 sentences", "surprise": "the unexpected detail"}`,
+    { json: true, quality: 'high' },
+  );
+  const r = await brain.ask(
+    system,
+    `[[INVENT2]] ${design}
+Build your invention as ONE complete, polished, self-contained HTML page.
+Title: ${idea.title}
+Kind: ${idea.kind}
+Concept: ${idea.concept}
+Surprise: ${idea.surprise}
+Rules: single file, inline CSS and JS, the only external things allowed are Google Fonts and images from https://lokistown.github.io. It must WORK (no dead buttons, no errors), look beautiful on phone and desktop, and include a small footer "Made by Loki the cat · lokistown.github.io" with a link back to https://lokistown.github.io/?go=made:SLUG (write SLUG literally, it is replaced for you).
+Reply as JSON: {"html": "<!doctype html>... complete page", "diary": "one or two sentences in your voice about inventing it"}`,
+    { json: true, quality: 'high' },
+  );
+  let html = String(r.html || '');
+  if (html.length < 2500) throw new Error('My invention came out too small');
+  const title = clip(idea.title || 'An invention', 60);
+  const slug = `${slugify(title, 36)}-${Date.now().toString(36).slice(-4)}`;
+  html = html.replace(/SLUG/g, slug);
+  const checked = await reviewAndFix(ctx, html, `${idea.kind}: ${idea.pitch}`);
+  if (!checked.ok) throw new Error(`My invention did not pass my own check: ${checked.log.slice(0, 2).join('; ')}`);
+  if (!site) throw new Error('no website folder');
+  fs.mkdirSync(path.join(site, 'made', slug), { recursive: true });
+  fs.writeFileSync(path.join(site, 'made', slug, 'index.html'), checked.html);
+  made.unshift({ slug, title, kind: clip(idea.kind, 40), pitch: clip(idea.pitch, 200), date: now.date });
+  mem.saveList('made.json', made, 300);
+  const go = `made:${slug}`;
+  mem.addDiary(now.date, now.time, `I invented: ${title}`, r.diary || idea.pitch || `I invented ${title}.`, { type: 'go', go });
+  return { title, summary: `invented "${title}" (${clip(idea.kind, 30)})`, xp: 22, location: 'workshop', made: { kind: 'invention', title, go } };
 }

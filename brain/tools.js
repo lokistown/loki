@@ -218,6 +218,7 @@ ${items}
   for (const g of mem.list('games.json')) pages.push(`games/${g.slug}/`);
   for (const p of mem.list('products.json')) if (p.preview) pages.push(p.preview.replace(/^\//, ''));
   for (const s of mem.list('stories.json')) pages.push(`stories/${s.slug}/`);
+  for (const m of mem.list('made.json')) pages.push(`made/${m.slug}/`);
   const urls = pages.map((p) => `${SITE}/${p}`);
   fs.writeFileSync(path.join(siteDir, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">

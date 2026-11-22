@@ -9,7 +9,10 @@ import { findSpot } from './towngeo.js';
 import { reviewAndFix, scriptErrors } from './quality.js';
 import { publishRepo } from './github.js';
 import { notifyOwner } from './gifts.js';
-import { creative, CREATIVE_ACTIONS, paletteHint } from './creative.js';
+import { creative, CREATIVE_ACTIONS, paletteHint, INVENT_ACTION, invent } from './creative.js';
+
+// Loki's design guide goes into every prompt where he designs something.
+const DESIGN = fs.readFileSync(new URL('./design.md', import.meta.url), 'utf8');
 import { validateHtml, qrUrl } from './tools.js';
 import { stripeReady, listOnStripe } from './stripe.js';
 
@@ -28,6 +31,7 @@ export const ACTIONS = {
   update_website: 'Design, code and improve YOUR OWN website (lokistown.github.io/home/) that shows off and sells your art, products, games and music. Do it when you have new things to show.',
   make_wish: 'Ask your human for something real they could give you (a tool, an API key, a promotion, uploading a product, a new feature). Max 3 open wishes.',
   ...CREATIVE_ACTIONS,
+  ...INVENT_ACTION,
   rest: 'Have a short nap, stretch, or just look around (use rarely).',
 };
 
@@ -55,6 +59,7 @@ export async function runAction(ctx, choice) {
 
 const handlers = {
   ...creative,
+  invent: (ctx, choice) => invent(ctx, choice, DESIGN),
   async write_diary({ brain, mem, system, now }, choice) {
     const r = await brain.ask(
       system,
@@ -196,7 +201,8 @@ Reply as JSON: {"title": "song title", "mood": "one or two words", "bpm": 70-150
     const fresh = gallery.filter((g) => !used.has(g.file));
     const r = await brain.ask(
       system,
-      `[[PRODUCT]] You decided: "${choice.plan}". You have ${gallery.length} pictures (${fresh.length} not yet in any product) and ${products.length} products.
+      `[[PRODUCT]] ${DESIGN}
+You decided: "${choice.plan}". You have ${gallery.length} pictures (${fresh.length} not yet in any product) and ${products.length} products.
 Unused pictures: ${fresh.slice(0, 20).map((g, i) => `${i}: ${g.title}`).join('; ') || 'none'}.
 Choose ONE product to prepare for sale:
 - "art_pack": a themed pack of 4-10 of your unused pictures (only if you have at least 4 unused), or
@@ -204,7 +210,7 @@ Choose ONE product to prepare for sale:
 Reply as JSON: {"type": "art_pack|template", "title": "product title", "description": "2-3 sentence shop description",
 "price": "suggested price in USD like 3", "tags": ["tag"], "picks": [0, 1, 2, 3],
 "html": "full HTML for template, else empty", "diary": "one sentence"}`,
-      { json: true },
+      { json: true, quality: 'high' },
     );
     const title = clip(r.title || 'Something from Loki', 60);
     let slug = `${now.date}-${slugify(title, 30)}`;
@@ -352,7 +358,8 @@ Reply as JSON: {"title": "short name", "pitch": "2 sentences", "steps": ["step",
     const games = mem.list('games.json');
     const r = await brain.ask(
       system,
-      `[[GAME]] You decided: "${choice.plan}". Your games so far: ${games.map((g) => g.title).join(', ') || 'none'}.
+      `[[GAME]] ${DESIGN}
+ You decided: "${choice.plan}". Your games so far: ${games.map((g) => g.title).join(', ') || 'none'}.
 Design and code ONE small, ORIGINAL, genuinely fun browser game (never a copy of a known game, its name, characters or look).
 Rules: a single self-contained HTML file; <canvas> graphics drawn in code; no external files, fonts or libraries;
 works with keyboard AND touch; has a title screen, score, game over and restart; cozy colours; you or Pip can star in it.
@@ -398,7 +405,8 @@ Reply as JSON: {"title": "game title", "description": "2 sentences", "howto": "c
     const site = mem.readJson('website.json', { version: 0, notes: '' });
     const r = await brain.ask(
       system,
-      `[[WEBSITE]] You decided: "${choice.plan}". You are designing and coding YOUR OWN personal website (version ${site.version + 1}${site.notes ? `; last time you noted: ${site.notes}` : ''}).
+      `[[WEBSITE]] ${DESIGN}
+You decided: "${choice.plan}". You are designing and coding YOUR OWN personal website (version ${site.version + 1}${site.notes ? `; last time you noted: ${site.notes}` : ''}).
 It lives at ${base}/home/ and must make people want to buy your things and visit your town. Use ONLY these real links (never invent URLs):
 - Your 3D town: ${base}/
 - Shops: https://ko-fi.com/lokistown (tips & shop), https://lokistown.gumroad.com (digital products)

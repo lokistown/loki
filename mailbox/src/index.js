@@ -91,7 +91,7 @@ export class Town {
     if (m.t === 'hello') {
       const first = !a.nick;
       a.nick = String(m.nick || '').replace(/[^A-Za-z0-9_]/g, '').slice(0, 24) || 'visitor';
-      a.c = Math.abs(Math.floor(Number(m.c) || 0)) % 7;
+      a.c = Math.abs(Math.floor(Number(m.c) || 0)) % 12;
       if (Array.isArray(m.p)) a.p = [num(m.p[0], 2000), num(m.p[1], 300), num(m.p[2], 2000), num(m.p[3], 10), m.p[4] ? 1 : 0];
       ws.serializeAttachment(a);
       const s = await this.settings();

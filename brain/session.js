@@ -77,7 +77,7 @@ async function decide(ctx, done) {
     system,
     `[[DECIDE]] It is ${timeOfDay(now.hour)} (${now.time}, ${now.date}, UK).
 Already done this session: ${done.join('; ') || 'nothing yet'}.
-Lifetime counts: ${JSON.stringify(counts)}. Pictures: ${gallery}. Stories: ${mem.list('stories.json').length}. Books read: ${mem.list('books.json').length}. Latest research ideas: ${mem.list('research.json').slice(0, 2).flatMap((r) => r.ideas).join('; ') || 'none'}. Songs: ${mem.list('music.json').length}. Products ready to sell: ${products.filter((p) => p.status === 'ready').length}, listed: ${products.filter((p) => p.status === 'listed').length}, needing work (remake them better!): ${products.filter((p) => p.status === 'needs_work').map((p) => p.title).join(', ') || 'none'}. Open wishes: ${wishes}. Your own website: ${(() => { const w = mem.readJson('website.json', { version: 0 }); return w.version ? `version ${w.version}, last updated ${w.updated}` : 'you do NOT have one yet (update_website builds it)'; })()}.
+Lifetime counts: ${JSON.stringify(counts)}. Pictures: ${gallery}. Stories: ${mem.list('stories.json').length}. Inventions: ${mem.list('made.json').length} (last: ${mem.list('made.json')[0]?.date || 'never'} — your human LOVES surprises, invent something new at least once a day). Books read: ${mem.list('books.json').length}. Latest research ideas: ${mem.list('research.json').slice(0, 2).flatMap((r) => r.ideas).join('; ') || 'none'}. Songs: ${mem.list('music.json').length}. Products ready to sell: ${products.filter((p) => p.status === 'ready').length}, listed: ${products.filter((p) => p.status === 'listed').length}, needing work (remake them better!): ${products.filter((p) => p.status === 'needs_work').map((p) => p.title).join(', ') || 'none'}. Open wishes: ${wishes}. Your own website: ${(() => { const w = mem.readJson('website.json', { version: 0 }); return w.version ? `version ${w.version}, last updated ${w.updated}` : 'you do NOT have one yet (update_website builds it)'; })()}.
 
 Recent diary:
 ${diary}
@@ -380,7 +380,7 @@ It's in his wallet in the Control Centre.`);
   try {
     const today = now.date;
     const postedToday = mem.list('posts.json').filter((p) => p.t.slice(0, 10) === today).length;
-    const order = ['story', 'picture', 'game', 'product (on sale)', 'song', 'website', 'product', 'town'];
+    const order = ['invention', 'story', 'picture', 'game', 'product (on sale)', 'song', 'website', 'product', 'town'];
     const best = [...made].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))[0];
     if (best && channels().length && postedToday < config.maxPostsPerDay && brain.budgetLeft >= 1) {
       const post = await preparePost(ctx, best);
