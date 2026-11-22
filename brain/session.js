@@ -17,7 +17,7 @@ import { fetchGifts, answerGift, ensureGiftLabel } from './gifts.js';
 import { readMailbox, mailboxReady, syncSales } from './offerings.js';
 import { notifyOwner, announce } from './gifts.js';
 import { listReadyProducts } from './stripe.js';
-import { channels, preparePost, sendPost } from './poster.js';
+import { channels, preparePost, sendPost, introPost } from './poster.js';
 import { FREE_TOOLS, weather, holidays, useToolLog, writeFeeds, indexNow } from './tools.js';
 import { ukNow, isSleepHour, nightKey, timeOfDay, clip } from './util.js';
 
@@ -159,6 +159,21 @@ Reply as JSON: {"reply": "...", "diary": "...", "granted": ${wish ? 'true if thi
   return gifts.length;
 }
 
+// Say hello once on every newly connected social channel.
+async function helloOnSocial(mem, siteDir) {
+  const cfg = mem.readJson('settings.json', {});
+  const fresh = channels().filter((c) => !(cfg.introduced || []).includes(c));
+  if (!fresh.length) return;
+  const post = introPost(siteDir);
+  if (process.env.RUNNER_TEMP) fs.appendFileSync(`${process.env.RUNNER_TEMP}/loki-outbox.jsonl`, JSON.stringify(post) + '\n');
+  else await sendPost(post);
+  cfg.introduced = [...(cfg.introduced || []), ...fresh];
+  mem.writeJson('settings.json', cfg);
+  const log = mem.list('posts.json');
+  log.unshift({ t: new Date().toISOString(), title: 'Hello post', go: null, text: post.text, channels: fresh });
+  mem.saveList('posts.json', log, 500);
+}
+
 async function main() {
   const started = Date.now();
   const mem = new Memory(memDir);
@@ -220,6 +235,11 @@ async function main() {
         console.warn('Dream failed:', e.message);
       }
     }
+    try {
+      await helloOnSocial(mem, siteDir);
+    } catch (e) {
+      console.warn('hello post failed:', e.message);
+    }
     // the shop never sleeps: finished products still go on sale (no AI needed)
     try {
       for (const p of await listReadyProducts(mem, 3)) mem.event('listed', { summary: `put "${p.title}" on sale (Stripe ${p.stripe.mode})` });
@@ -278,6 +298,11 @@ It's in his wallet in the Control Centre.`);
     }
   } catch (e) {
     console.warn('Sales sync failed:', e.message);
+  }
+  try {
+    await helloOnSocial(mem, siteDir);
+  } catch (e) {
+    console.warn('hello post failed:', e.message);
   }
   // 2c) put finished products on sale in his own Stripe shop
   try {

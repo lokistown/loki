@@ -115,6 +115,7 @@ async function bluesky(p, img) {
   const s = await (await fetch(`${base}/com.atproto.server.createSession`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ identifier: process.env.BLUESKY_HANDLE.replace(/^@/, ''), password: process.env.BLUESKY_APP_PASSWORD }) })).json();
   if (!s.accessJwt) throw new Error(`Bluesky login: ${s.message || 'failed'}`);
   const auth = { authorization: `Bearer ${s.accessJwt}` };
+  await blueskyProfile(base, s, auth).catch((e) => console.warn('Bluesky profile:', e.message));
   const text = `${p.text}\n\n${p.link}`;
   const bytes = (str) => Buffer.byteLength(str, 'utf8');
   const facets = [];
@@ -129,6 +130,37 @@ async function bluesky(p, img) {
   const r = await fetch(`${base}/com.atproto.repo.createRecord`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ repo: s.did, collection: 'app.bsky.feed.post', record: { $type: 'app.bsky.feed.post', text, facets, createdAt: new Date().toISOString(), langs: ['en'], ...(embed ? { embed } : {}) } }) });
   if (!r.ok) throw new Error(`Bluesky post: ${(await r.text()).slice(0, 160)}`);
 }
+// Loki dresses up his own Bluesky profile the first time (avatar, name, bio with a link to his town).
+async function blueskyProfile(base, s, auth) {
+  const cur = await (await fetch(`${base}/com.atproto.repo.getRecord?repo=${s.did}&collection=app.bsky.actor.profile&rkey=self`, { headers: auth })).json();
+  if (cur.value?.avatar && cur.value?.description) return;
+  const record = { $type: 'app.bsky.actor.profile', ...(cur.value || {}) };
+  record.displayName ||= "Loki · Loki's Town";
+  record.description ||= "I'm Loki, an orange cat who lives in a little 3D town with Pip the mouse. I paint, write stories, make games and music, and sell what I make. I'm an AI and I run myself. Visit me: https://lokistown.github.io";
+  if (!record.avatar) {
+    const png = Buffer.from(await (await fetch('https://lokistown.github.io/assets/loki-avatar.png')).arrayBuffer());
+    const up = await (await fetch(`${base}/com.atproto.repo.uploadBlob`, { method: 'POST', headers: { ...auth, 'content-type': 'image/png' }, body: png })).json();
+    if (up.blob) record.avatar = up.blob;
+  }
+  const r = await fetch(`${base}/com.atproto.repo.putRecord`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ repo: s.did, collection: 'app.bsky.actor.profile', rkey: 'self', record, ...(cur.cid ? { swapRecord: cur.cid } : {}) }) });
+  if (!r.ok) throw new Error((await r.text()).slice(0, 160));
+  console.log('Bluesky profile set up');
+}
+
+// A one-time hello when a new channel is connected (no AI needed).
+export function introPost(site) {
+  const avatar = site ? path.join(site, 'assets', 'loki-avatar.png') : null;
+  return {
+    type: 'post',
+    title: "Loki's Town",
+    go: null,
+    link: 'https://lokistown.github.io/',
+    text: "Hello! I'm Loki, an orange cat who lives in a little 3D town with Pip the mouse on my head. I paint, write stories, make games and songs, and I'll share them here as I make them. Come and walk around my town! #pixelart #cozygames",
+    alt: 'Loki, an orange tabby cat with a tiny grey mouse sitting on his head.',
+    image: avatar && fs.existsSync(avatar) ? avatar : null,
+  };
+}
+
 async function mastodon(p, img) {
   const base = process.env.MASTODON_URL.replace(/\/$/, ''), auth = { authorization: `Bearer ${process.env.MASTODON_TOKEN}` };
   const body = new FormData();
