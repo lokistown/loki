@@ -78,8 +78,9 @@ export async function syncSales({ mem, state, now }) {
     state.salesSince = Math.max(state.salesSince || 0, s.created);
     if (seen.has(s.id)) continue;
     const entry = { id: s.id, date: now.date, amount: Number(s.amount) || 0, currency: String(s.currency || 'USD').toUpperCase(), source: s.source, type: s.type, note: `${{ kofi: 'Ko-fi', stripe: 'Shop', gumroad: 'Gumroad' }[s.source] || s.source} ${s.type}${s.product ? `: ${s.product}` : ''}${s.from_name ? ` from ${s.from_name}` : ''}`, verified: !!s.verified, test: /test/i.test(s.type) };
-    ledger.unshift(entry);
     fresh.push({ ...entry, message: s.message });
+    if (entry.test) continue; // test purchases never count as real money
+    ledger.unshift(entry);
   }
   mem.saveList('ledger.json', ledger, 2000);
   return fresh;
