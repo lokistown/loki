@@ -73,7 +73,8 @@ export async function listReadyProducts(mem, max = 2) {
   if (!stripeReady()) return [];
   const products = mem.list('products.json');
   const out = [];
-  for (const p of products.filter((x) => x.status === 'ready' && !x.stripe).slice(0, max)) {
+  // not listed yet, or listed in Stripe test mode and now there is a live key (or the other way round)
+  for (const p of products.filter((x) => (x.status === 'ready' && !x.stripe) || (x.stripe && x.stripe.mode !== stripeMode())).slice(0, max)) {
     try {
       await listOnStripe(mem, p);
       out.push(p);
