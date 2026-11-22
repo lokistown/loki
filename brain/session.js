@@ -17,6 +17,7 @@ import { fetchGifts, answerGift, ensureGiftLabel } from './gifts.js';
 import { readMailbox, mailboxReady, syncSales } from './offerings.js';
 import { notifyOwner, announce } from './gifts.js';
 import { listReadyProducts } from './stripe.js';
+import { channels, preparePost, sendPost } from './poster.js';
 import { FREE_TOOLS, weather, holidays, useToolLog, writeFeeds, indexNow } from './tools.js';
 import { ukNow, isSleepHour, nightKey, timeOfDay, clip } from './util.js';
 
@@ -36,6 +37,7 @@ export function availableTools() {
   if (process.env.GH_TOKEN) t.push('GitHub (publish repos, talk to your human)');
   if (process.env.LOKI_WORKER_URL) t.push('mailbox + shop sales');
   if (process.env.LOKI_NTFY_TOPIC) t.push('phone notifications to your human');
+  if (channels().length) t.push(`social media (${channels().join(', ')}): your best new creation is posted for you after each session`);
   if (process.env.STRIPE_SECRET_KEY) t.push('Stripe: your own shop (products you make go on sale automatically)');
   if (process.env.POLLINATIONS_TOKEN) t.push('Pollinations pollen key (unlimited pictures, no logo)');
   for (const f of FREE_TOOLS) t.push(`${f.name} (${f.does})`);
@@ -343,6 +345,22 @@ It's in his wallet in the Control Centre.`);
   mem.saveState(state);
   // tell his human what he made (one quiet push with buttons that open each thing in town)
   await announce(made);
+  // post his best new creation on social media (max a few a day, so followers are not flooded)
+  try {
+    const today = now.date;
+    const postedToday = mem.list('posts.json').filter((p) => p.t.slice(0, 10) === today).length;
+    const order = ['story', 'picture', 'game', 'product (on sale)', 'song', 'website', 'product', 'town'];
+    const best = [...made].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))[0];
+    if (best && channels().length && postedToday < config.maxPostsPerDay && brain.budgetLeft >= 1) {
+      const post = await preparePost(ctx, best);
+      if (process.env.RUNNER_TEMP) fs.appendFileSync(`${process.env.RUNNER_TEMP}/loki-outbox.jsonl`, JSON.stringify(post) + '\n');
+      else await sendPost(post);
+      mem.addRecent(state, ukNow().time, `posted "${best.title}" on ${channels().join(', ')}`);
+      mem.saveState(state);
+    }
+  } catch (e) {
+    console.warn('Posting failed:', e.message);
+  }
   // tell search engines about his pages once a day
   if (state.indexNowDay !== now.date && siteDir) {
     const urls = writeFeeds(siteDir, mem);

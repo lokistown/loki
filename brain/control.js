@@ -19,13 +19,14 @@ export function writeControl(siteDir, mem, state, extra = {}) {
     ledger: mem.list('ledger.json'),
     business: mem.list('business.json'),
     resources: mem.list('resources.json'),
-    tools: ['GROQ_API_KEY', 'OPENROUTER_API_KEY', 'HF_TOKEN', 'ELEVENLABS_API_KEY', 'POLLINATIONS_TOKEN'].filter((k) => process.env[k]),
+    tools: ['GROQ_API_KEY', 'OPENROUTER_API_KEY', 'HF_TOKEN', 'ELEVENLABS_API_KEY', 'POLLINATIONS_TOKEN', 'STRIPE_SECRET_KEY', 'BLUESKY_APP_PASSWORD', 'MASTODON_TOKEN', 'DISCORD_WEBHOOK_URL', 'TELEGRAM_BOT_TOKEN'].filter((k) => process.env[k]),
     props: (mem.loadTown().props || []).slice(-50),
     diary: mem.diaryEntries(30),
     providers: extra.providers || [],
     memoryRepo: process.env.LOKI_MEMORY_REPO || 'lokistown/loki-memory',
     freeTools: extra.freeTools || [],
     toolLog: mem.list('toollog.json').slice(0, 60),
+    posts: mem.list('posts.json').slice(0, 20),
     // lets the unlocked Control Centre change live town settings (visitors on/off) right away
     owner: { workerUrl: process.env.LOKI_WORKER_URL || '', key: process.env.LOKI_WORKER_SECRET || '' },
   };

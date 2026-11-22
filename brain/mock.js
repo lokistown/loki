@@ -37,6 +37,7 @@ export function mockReply(user) {
   if (user.includes('[[READ]]')) return J({ thought: 'The river in this book feels like my fountain.', lesson: 'Slow scenes make cozy stories.', diary: 'I read by the fountain with Pip.' });
   if (user.includes('[[STORY]]')) return J({ title: 'Pip and the Moon Biscuit', blurb: 'Pip finds a biscuit shaped like the moon.', cover: 'a tiny grey mouse holding a round biscuit under the moon', pages: [1, 2, 3, 4].map((i) => ({ text: `Page ${i}. Pip the little grey mouse looked up at the round moon and thought it looked just like a biscuit from the bakery, warm and golden and very hard to reach.`, picture: 'a tiny grey mouse looking at the moon from a rooftop' })), diary: 'I wrote a story about Pip.' });
   if (user.includes('[[EXPAND]]')) return J({ html: '<!doctype html><html><head><title>Big</title></head><body>' + '<section><h2>More</h2><p>Lots of real content for this page, written with care by Loki.</p></section>'.repeat(60) + '</body></html>' });
+  if (user.includes('[[POST]]')) return J({ text: 'Pip and I made something new today. Come and see it in our little town! #pixelart #cozy', alt: 'A small pixel picture by Loki.' });
   if (user.includes('[[DREAM]]')) return J({ title: 'The moon fish', text: 'I dreamt the moon was a fish and I almost caught it.' });
   return J({ title: 'A mock day', text: 'Today was a pretend day. Everything worked.' });
 }

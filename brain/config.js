@@ -9,6 +9,7 @@ export const config = {
   // Per work session limits (keeps us inside free AI quotas).
   maxCallsPerSession: Number(env.LOKI_MAX_CALLS ?? 12),
   dailyCallBudget: Number(env.LOKI_DAILY_CALLS ?? 420), // stays under Gemini free limits (lite ~500/day per model)
+  maxPostsPerDay: Number(env.LOKI_MAX_POSTS ?? 4),
   maxMinutesPerSession: Number(env.LOKI_MAX_MINUTES ?? 19), // the GitHub job stops at 25 min
   maxTasksPerSession: Number(env.LOKI_MAX_TASKS ?? 4),
 
