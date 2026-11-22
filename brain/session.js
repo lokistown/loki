@@ -81,7 +81,8 @@ ${diary}
 What do you do next? Options:
 ${Object.entries(ACTIONS).map(([k, v]) => `- ${k}: ${v}`).join('\n')}
 
-Ideas visitors inspired: ${(state.inspirations || []).join('; ') || 'none yet'}. Your plans: ${(state.ideas || []).join('; ') || 'none'}.
+${(() => { const f = mem.recentEvents(60).filter((e) => e.type === 'task_failed' && Date.now() - new Date(e.t) < 6 * 3600000); return f.length ? `These failed recently, so choose something DIFFERENT unless you have a new approach: ${[...new Set(f.map((e) => `${e.action} (${clip(e.summary, 60)})`))].join('; ')}.
+` : ''; })()}Ideas visitors inspired: ${(state.inspirations || []).join('; ') || 'none yet'}. Your plans: ${(state.ideas || []).join('; ') || 'none'}.
 Balance creating, decorating and building your town, earning (products, business), learning and looking after yourself. Avoid repeating the same action many times in a row.
 Reply as JSON: {"thought": "one short inner thought, first person", "mood": "one word", "action": "<one option>", "plan": "what exactly you will do, one sentence"}`,
     { json: true },

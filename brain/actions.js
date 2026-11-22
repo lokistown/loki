@@ -32,6 +32,21 @@ export const ACTIONS = {
 
 const BUILDING_KINDS = ['house', 'workshop', 'bakery', 'gallery', 'market', 'cafe', 'shop', 'library', 'tower', 'arcade', 'park', 'garden', 'fountain', 'tree', 'other'];
 
+// A first draft that is too short gets one more careful pass (bigger model) instead of being thrown away.
+async function growHtml(ctx, html, what, min) {
+  if (html.length >= min) return html;
+  const r = await ctx.brain.ask(
+    ctx.system,
+    `[[EXPAND]] Your first draft of a ${what} was too short (${html.length} characters; it needs at least ${min}).
+Rewrite it as a COMPLETE, richer version: more sections, real example content, polished responsive inline CSS. Keep it a single HTML file with no external files.
+Draft:
+${html.slice(0, 12000)}
+Reply as JSON: {"html": "<!doctype html>... the complete page"}`,
+    { json: true, quality: 'high' },
+  );
+  return String(r.html || '').length > html.length ? String(r.html) : html;
+}
+
 export async function runAction(ctx, choice) {
   const fn = handlers[choice.action] || handlers.rest;
   return fn(ctx, choice);
@@ -204,7 +219,7 @@ Reply as JSON: {"type": "art_pack|template", "title": "product title", "descript
       }
       items = picks.map((g) => g.file);
     } else {
-      let html = String(r.html || '');
+      let html = await growHtml(ctx, String(r.html || ''), 'website template for sale', 4000);
       if (html.length < 4000) throw new Error('Template too small to sell - I want to make it richer');
       const checked = await reviewAndFix(ctx, html, 'website template for sale');
       if (!checked.ok) throw new Error(`Template failed my own quality check: ${checked.log.slice(0, 2).join('; ')}`);
@@ -389,7 +404,7 @@ Inline CSS (and tiny JS only if needed), no external files except the image link
 Reply as JSON: {"html": "<!doctype html>... complete page", "notes": "one line about what to improve next time", "diary": "one sentence"}`,
       { json: true, quality: 'high' },
     );
-    const html = String(r.html || '');
+    const html = await growHtml(ctx, String(r.html || ''), 'personal website', 3000);
     if (html.length < 3000) throw new Error('Website came out too small');
     const checked = await reviewAndFix(ctx, html, 'personal website');
     if (!checked.ok) throw new Error(`My website failed my own quality check: ${checked.log.slice(0, 2).join('; ')}`);
