@@ -220,6 +220,12 @@ async function main() {
         console.warn('Dream failed:', e.message);
       }
     }
+    // the shop never sleeps: finished products still go on sale (no AI needed)
+    try {
+      for (const p of await listReadyProducts(mem, 3)) mem.event('listed', { summary: `put "${p.title}" on sale (Stripe ${p.stripe.mode})` });
+    } catch (e) {
+      console.warn('Stripe listing failed:', e.message);
+    }
     Object.assign(state, { location: 'house', activity: note, thought: 'Zzz…', mood: 'sleepy', schedule: [], whatsOn: 'The town is quiet. Only the fountain is still awake.' });
     state.pip.status = 'curled up in her teacup bed';
     mem.saveState(state);
