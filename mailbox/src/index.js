@@ -129,17 +129,83 @@ export class Town {
     if (a?.nick) this.broadcast({ t: 'leave', id: a.id, online: this.people(ws).length }, ws);
   }
 }
+
+// ---------- Loki's Stripe shop: private product files, thank-you page, download, sales ----------
+async function stripeGet(env, path) {
+  const r = await fetch(`https://api.stripe.com/v1${path}`, { headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, 'stripe-version': '2024-06-20' } });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error?.message || `stripe ${r.status}`);
+  return j;
+}
+// A paid checkout session for one of Loki's products, or null.
+async function paidPurchase(env, sid) {
+  if (!env.STRIPE_SECRET_KEY || !/^cs_(test|live)_[A-Za-z0-9]{10,200}$/.test(sid || '')) return null;
+  const s = await stripeGet(env, `/checkout/sessions/${sid}`);
+  if (s.status !== 'complete' || !['paid', 'no_payment_required'].includes(s.payment_status)) return null;
+  const f = await env.DB.prepare('SELECT id, title, name, link FROM files WHERE link = ?').bind(s.payment_link || '').first();
+  if (!f) return null;
+  return { s, f };
+}
+async function recordStripeSale(env, s, title) {
+  await env.DB.prepare('INSERT OR IGNORE INTO sales (id, source, type, amount, currency, product, from_name, message, is_public, created, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(`stripe-${s.id}`, 'stripe', s.livemode ? 'Sale' : 'Test sale', (Number(s.amount_total) || 0) / 100, String(s.currency || 'usd').toUpperCase(), String(title || '').slice(0, 80), '', '', 0, (s.created || 0) * 1000 || Date.now(), 1).run();
+}
+// Backup: every 30 minutes, pick up any purchase whose buyer closed the tab before the thank-you page.
+async function syncStripe(env) {
+  if (!env.STRIPE_SECRET_KEY) return;
+  const since = Math.floor(Date.now() / 1000) - 3 * 3600;
+  const j = await stripeGet(env, `/checkout/sessions?status=complete&limit=50&created[gte]=${since}`);
+  for (const s of j.data || []) {
+    if (!['paid', 'no_payment_required'].includes(s.payment_status) || !s.payment_link) continue;
+    const f = await env.DB.prepare('SELECT title FROM files WHERE link = ?').bind(s.payment_link).first();
+    if (f) await recordStripeSale(env, s, f.title);
+  }
+}
+const page = (title, body) => new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
+<style>body{margin:0;font:17px/1.6 system-ui,sans-serif;background:#2b2d42;color:#3b2416}.card{max-width:520px;margin:10vh auto;background:#fff8ec;border:3px solid #3b2416;border-radius:22px;padding:28px;box-shadow:0 6px 0 rgba(0,0,0,.35);text-align:center}
+h1{margin:.2em 0}img{width:120px;border-radius:50%;border:3px solid #3b2416}.btn{display:inline-block;margin:8px 6px;padding:12px 22px;border:3px solid #3b2416;border-radius:999px;background:#f6b26b;color:#3b2416;font-weight:700;text-decoration:none}.btn.alt{background:#fff}.muted{color:#8a6f5c;font-size:.9em}</style></head>
+<body><div class="card"><img src="https://lokistown.github.io/assets/loki-avatar.png" alt="Loki">${body}</div></body></html>`, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+const escH = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+async function shopRoute(p, url, req, env) {
+  if (p === '/shop/thanks') {
+    const sid = url.searchParams.get('session_id');
+    let got = null;
+    try { got = await paidPurchase(env, sid); } catch {}
+    if (!got) return page('Hmm', `<h1>Hmm, I can't find that purchase</h1><p>If you just paid, wait a few seconds and refresh this page. Still stuck? Leave Loki a note in his town's mailbox.</p><a class="btn" href="https://lokistown.github.io/">Loki's Town</a>`);
+    await recordStripeSale(env, got.s, got.f.title);
+    const dl = `/shop/download?session_id=${encodeURIComponent(sid)}`;
+    return page('Thank you!', `<h1>Thank you!</h1><p>You bought <b>${escH(got.f.title)}</b>. Loki is doing a happy little spin, and Pip almost fell off his head.</p>
+<a class="btn" href="${dl}">Download it</a><a class="btn alt" href="https://lokistown.github.io/?go=product:${encodeURIComponent(got.f.id)}">See it in Loki's town</a>
+<p class="muted">Keep this page's link: it lets you download your file again later.${got.s.livemode ? '' : ' (This was a test purchase.)'}</p>`);
+  }
+  if (p === '/shop/download') {
+    let got = null;
+    try { got = await paidPurchase(env, url.searchParams.get('session_id')); } catch {}
+    if (!got) return new Response('Purchase not found', { status: 404 });
+    const row = await env.DB.prepare('SELECT name, data FROM files WHERE id = ?').bind(got.f.id).first();
+    return new Response(new Uint8Array(row.data), { headers: { 'content-type': 'application/zip', 'content-disposition': `attachment; filename="${String(row.name).replace(/[^\w.-]/g, '_')}"`, 'cache-control': 'private, no-store' } });
+  }
+  return null;
+}
+
 const town = (env) => env.TOWN.get(env.TOWN.idFromName('main'));
 
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(wakeLoki(env));
+    ctx.waitUntil(syncStripe(env).catch(() => {}));
   },
   async fetch(req, env) {
     const url = new URL(req.url);
     const p = url.pathname;
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors(req) });
     try {
+      // ---------- Loki's shop (Stripe) ----------
+      if (p.startsWith('/shop/')) {
+        const r = await shopRoute(p, url, req, env);
+        if (r) return r;
+      }
       // ---------- live town ----------
       if (p === '/town/ws') {
         const o = req.headers.get('origin') || '';
@@ -225,6 +291,14 @@ export default {
         if (p === '/admin/town') {
           const r = await town(env).fetch(new Request('https://town/settings', { method: req.method === 'POST' ? 'POST' : 'GET', body: req.method === 'POST' ? await req.text() : undefined }));
           return json(req, await r.json());
+        }
+        if (p === '/admin/product' && req.method === 'POST') {
+          const b = await req.json();
+          const data = Uint8Array.from(atob(String(b.data || '')), (c) => c.charCodeAt(0));
+          if (!b.id || !b.link || !data.length || data.length > 1_900_000) return json(req, { error: 'bad product' }, 400);
+          await env.DB.prepare('INSERT OR REPLACE INTO files (id, link, title, price, name, data, mode, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(String(b.id).slice(0, 80), String(b.link).slice(0, 80), String(b.title || '').slice(0, 120), Number(b.price) || 0, String(b.name || 'loki.zip').slice(0, 100), data, String(b.mode || 'live'), Date.now()).run();
+          return json(req, { ok: true, bytes: data.length });
         }
         if (p === '/admin/sales') {
           const since = Number(url.searchParams.get('since')) || 0;

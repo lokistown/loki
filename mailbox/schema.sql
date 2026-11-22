@@ -32,3 +32,14 @@ CREATE TABLE IF NOT EXISTS sales (
   created INTEGER,
   verified INTEGER
 );
+CREATE TABLE IF NOT EXISTS files (
+  id TEXT PRIMARY KEY,
+  link TEXT NOT NULL,
+  title TEXT,
+  price REAL,
+  name TEXT,
+  data BLOB NOT NULL,
+  mode TEXT,
+  created INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_files_link ON files (link);

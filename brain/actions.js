@@ -11,6 +11,7 @@ import { publishRepo } from './github.js';
 import { notifyOwner } from './gifts.js';
 import { creative, CREATIVE_ACTIONS, paletteHint } from './creative.js';
 import { validateHtml, qrUrl } from './tools.js';
+import { stripeReady, listOnStripe } from './stripe.js';
 
 export const PROP_TYPES = ['statue_cat', 'statue_fish', 'sculpture', 'birdbath', 'bench', 'lamp', 'flowerbed', 'rock_garden', 'signpost', 'kite', 'tree', 'planter'];
 
@@ -254,6 +255,18 @@ Reply as JSON: {"type": "art_pack|template", "title": "product title", "descript
       fs.writeFileSync(path.join(dir, 'index.html'), `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:system-ui;background:#fff8ec;color:#3b2416;max-width:900px;margin:auto;padding:20px}img{width:180px;image-rendering:pixelated;border:3px solid #3b2416;border-radius:12px;margin:6px}</style><h1>${title}</h1><p>${(r.description || '').replace(/</g, '&lt;')}</p>${items.map((f) => `<img src="../../gallery/${f}" alt="">`).join('')}<p><a href="../../">← Loki's Town</a></p>`);
     }
     product.preview = `products/${slug}/`;
+    // with Stripe set up, Loki puts it on sale himself
+    if (stripeReady()) {
+      try {
+        await listOnStripe(mem, product);
+        mem.saveList('products.json', products, 300);
+        mem.addDiary(now.date, now.time, `On sale: ${title}`, r.diary || `I made "${title}" and put it in my shop myself, for $${product.price}.`, { type: 'go', go: `product:${slug}` });
+        return { title, summary: `made "${title}" and put it on sale for $${product.price}`, xp: 20, location: 'workshop', made: { kind: 'product (on sale)', title, go: `product:${slug}` } };
+      } catch (e) {
+        product.listError = clip(e.message, 200);
+        mem.event('stripe_error', { summary: `${title}: ${product.listError}` });
+      }
+    }
     await notifyOwner(`Loki made "${title}" - please list it`, `I finished a product and checked it myself.\n\nTitle: ${title}\nPrice: $${product.price}\nDescription: ${product.description}\nTags: ${product.tags.join(', ')}\n\nPreview: https://lokistown.github.io/products/${slug}/\nFile: https://github.com/lokistown/loki-memory/blob/main/${product.file}\n\nWhen it is on Gumroad, reply here with: Listed: ${title} followed by the Gumroad link (for example: Listed: ${title} https://lokistown.gumroad.com/l/xyz) so I can show it in my shop.`, `product:${slug}`);
     mem.saveList('products.json', products, 300);
     mem.addDiary(now.date, now.time, `Made something to sell: ${title}`, r.diary || `I packed up "${title}" for my shop.`, { type: 'go', go: `product:${slug}` });

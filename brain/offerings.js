@@ -77,7 +77,7 @@ export async function syncSales({ mem, state, now }) {
   for (const s of items) {
     state.salesSince = Math.max(state.salesSince || 0, s.created);
     if (seen.has(s.id)) continue;
-    const entry = { id: s.id, date: now.date, amount: Number(s.amount) || 0, currency: String(s.currency || 'USD').toUpperCase(), source: s.source, type: s.type, note: `${s.source === 'kofi' ? 'Ko-fi' : 'Gumroad'} ${s.type}${s.product ? `: ${s.product}` : ''}${s.from_name ? ` from ${s.from_name}` : ''}`, verified: !!s.verified, test: /test/i.test(s.type) };
+    const entry = { id: s.id, date: now.date, amount: Number(s.amount) || 0, currency: String(s.currency || 'USD').toUpperCase(), source: s.source, type: s.type, note: `${{ kofi: 'Ko-fi', stripe: 'Shop', gumroad: 'Gumroad' }[s.source] || s.source} ${s.type}${s.product ? `: ${s.product}` : ''}${s.from_name ? ` from ${s.from_name}` : ''}`, verified: !!s.verified, test: /test/i.test(s.type) };
     ledger.unshift(entry);
     fresh.push({ ...entry, message: s.message });
   }

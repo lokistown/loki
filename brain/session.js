@@ -16,6 +16,7 @@ import { planSchedule, mapText, driftNeeds, applyNeeds } from './planner.js';
 import { fetchGifts, answerGift, ensureGiftLabel } from './gifts.js';
 import { readMailbox, mailboxReady, syncSales } from './offerings.js';
 import { notifyOwner, announce } from './gifts.js';
+import { listReadyProducts } from './stripe.js';
 import { FREE_TOOLS, weather, holidays, useToolLog, writeFeeds, indexNow } from './tools.js';
 import { ukNow, isSleepHour, nightKey, timeOfDay, clip } from './util.js';
 
@@ -35,6 +36,7 @@ export function availableTools() {
   if (process.env.GH_TOKEN) t.push('GitHub (publish repos, talk to your human)');
   if (process.env.LOKI_WORKER_URL) t.push('mailbox + shop sales');
   if (process.env.LOKI_NTFY_TOPIC) t.push('phone notifications to your human');
+  if (process.env.STRIPE_SECRET_KEY) t.push('Stripe: your own shop (products you make go on sale automatically)');
   if (process.env.POLLINATIONS_TOKEN) t.push('Pollinations pollen key (unlimited pictures, no logo)');
   for (const f of FREE_TOOLS) t.push(`${f.name} (${f.does})`);
   return t;
@@ -268,6 +270,16 @@ It's in his wallet in the Control Centre.`);
     }
   } catch (e) {
     console.warn('Sales sync failed:', e.message);
+  }
+  // 2c) put finished products on sale in his own Stripe shop
+  try {
+    for (const p of await listReadyProducts(mem, 2)) {
+      mem.addDiary(now.date, ukNow().time, `On sale: ${p.title}`, `I put "${p.title}" in my shop myself, for $${p.price}.`, { type: 'go', go: `product:${(p.preview || '').split('/').filter(Boolean).pop() || p.id}` });
+      mem.addRecent(state, ukNow().time, `put "${p.title}" on sale`);
+      done.push(`put "${p.title}" on sale`);
+    }
+  } catch (e) {
+    console.warn('Stripe listing failed:', e.message);
   }
   mem.saveState(state);
 
